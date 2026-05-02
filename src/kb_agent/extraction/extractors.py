@@ -13,7 +13,11 @@ class WebpageExtractor:
     client: httpx.AsyncClient
 
     async def extract(self, url: str) -> ExtractedContent | None:
-        response = await self.client.get(url)
+        try:
+            response = await self.client.get(url)
+        except httpx.HTTPError:
+            return None
+
         if response.status_code < 200 or response.status_code >= 300:
             return None
 

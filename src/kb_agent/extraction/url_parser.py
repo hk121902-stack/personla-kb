@@ -18,10 +18,14 @@ def find_first_url(message: str) -> str | None:
 def detect_source_type(url: str) -> SourceType:
     hostname = (urlparse(url).hostname or "").removeprefix("www.").lower()
 
-    if hostname in {"x.com", "twitter.com"}:
+    if _host_matches(hostname, "x.com") or _host_matches(hostname, "twitter.com"):
         return SourceType.X
-    if hostname in {"youtube.com", "youtu.be"}:
+    if _host_matches(hostname, "youtube.com") or _host_matches(hostname, "youtu.be"):
         return SourceType.YOUTUBE
-    if hostname == "linkedin.com":
+    if _host_matches(hostname, "linkedin.com"):
         return SourceType.LINKEDIN
     return SourceType.WEB
+
+
+def _host_matches(hostname: str, domain: str) -> bool:
+    return hostname == domain or hostname.endswith(f".{domain}")
