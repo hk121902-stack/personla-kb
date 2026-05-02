@@ -46,6 +46,23 @@ class FakeApplication:
         asyncio.run(run_lifecycle())
 
 
+class FakeHttpClient:
+    def __init__(self, events: list | None = None) -> None:
+        self.events = events
+        self.closed = False
+        self.close_count = 0
+
+    @property
+    def is_closed(self) -> bool:
+        return self.closed
+
+    async def aclose(self) -> None:
+        self.close_count += 1
+        if self.events is not None:
+            self.events.append("http_close")
+        self.closed = True
+
+
 class FakeDigestService:
     def __init__(self) -> None:
         self.daily_user_ids = []
@@ -111,6 +128,25 @@ async def test_registered_digest_callback_sends_digest_message() -> None:
 
     assert digest_service.daily_user_ids == ["telegram:123"]
     assert application.bot.messages == [{"chat_id": "123", "text": "Daily body"}]
+
+
+def test_build_runtime_passes_configured_chat_id_to_application(monkeypatch) -> None:
+    captured = {}
+
+    def fake_build_application(handler, token, *, allowed_chat_id=None):
+        captured["token"] = token
+        captured["allowed_chat_id"] = allowed_chat_id
+        return FakeApplication()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeHttpClient)
+    monkeypatch.setattr(app_module, "build_application", fake_build_application)
+
+    runtime = app_module.build_runtime(
+        Settings(telegram_bot_token="token", telegram_chat_id="123"),
+    )
+
+    assert runtime.application.bot.messages == []
+    assert captured == {"token": "token", "allowed_chat_id": "123"}
 
 
 def test_main_starts_and_stops_scheduler_from_application_lifecycle(monkeypatch) -> None:
@@ -196,19 +232,3 @@ class LoopCheckingScheduler:
         self.events.append(("shutdown", wait))
         self.running = False
 
-
-class FakeHttpClient:
-    def __init__(self, events: list | None = None) -> None:
-        self.events = events
-        self.closed = False
-        self.close_count = 0
-
-    @property
-    def is_closed(self) -> bool:
-        return self.closed
-
-    async def aclose(self) -> None:
-        self.close_count += 1
-        if self.events is not None:
-            self.events.append("http_close")
-        self.closed = True

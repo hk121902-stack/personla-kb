@@ -56,7 +56,11 @@ def build_runtime(settings: Settings) -> Runtime:
         digest_service=digest_service,
         archive_review_service=archive_review_service,
     )
-    application = build_application(handler, settings.telegram_bot_token)
+    application = build_application(
+        handler,
+        settings.telegram_bot_token,
+        allowed_chat_id=settings.telegram_chat_id,
+    )
     scheduler = None
     if settings.telegram_chat_id is not None:
         scheduler = AsyncIOScheduler(timezone=settings.timezone)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import socket
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -29,17 +30,19 @@ class WebpageExtractor:
             return None
 
         try:
-            response = await self.client.get(url, follow_redirects=False)
+            async with self.client.stream("GET", url, follow_redirects=False) as response:
+                if response.status_code < 200 or response.status_code >= 300:
+                    return None
+
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > MAX_WEBPAGE_BODY_BYTES:
+                        return None
         except httpx.HTTPError:
             return None
 
-        if response.status_code < 200 or response.status_code >= 300:
-            return None
-
-        if len(response.content) > MAX_WEBPAGE_BODY_BYTES:
-            return None
-
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(bytes(body), "html.parser")
         title = soup.title.get_text(strip=True) if soup.title else ""
         for hidden in soup(["head", "script", "style", "noscript"]):
             hidden.decompose()
@@ -69,8 +72,21 @@ def _is_safe_url(url: str) -> bool:
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        return True
+        return _hostname_resolves_safely(host, parsed.port or parsed.scheme)
 
+    return _is_safe_ip(ip)
+
+
+def _hostname_resolves_safely(host: str, port: int | str) -> bool:
+    try:
+        addrinfos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return False
+
+    return all(_is_safe_ip(ipaddress.ip_address(addrinfo[4][0])) for addrinfo in addrinfos)
+
+
+def _is_safe_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return not (
         ip.is_loopback
         or ip.is_private

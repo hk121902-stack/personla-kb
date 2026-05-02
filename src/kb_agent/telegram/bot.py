@@ -173,7 +173,12 @@ class TelegramMessageHandler:
         await _send(reply, format_retrieval_response(response))
 
 
-def build_application(handler: TelegramMessageHandler, token: str) -> Application:
+def build_application(
+    handler: TelegramMessageHandler,
+    token: str,
+    *,
+    allowed_chat_id: str | None = None,
+) -> Application:
     async def handle_update(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         if (
             update.effective_user is None
@@ -181,6 +186,9 @@ def build_application(handler: TelegramMessageHandler, token: str) -> Applicatio
             or update.message is None
             or update.message.text is None
         ):
+            return
+
+        if allowed_chat_id is not None and str(update.effective_chat.id) != allowed_chat_id:
             return
 
         user_id = _chat_scoped_user_id(update)

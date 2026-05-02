@@ -7,7 +7,7 @@ import pytest
 
 from kb_agent.core.archive_review import ArchiveRecommendation
 from kb_agent.core.models import SavedItem, SourceType, Status
-from kb_agent.telegram.bot import TelegramMessageHandler, _chat_scoped_user_id
+from kb_agent.telegram.bot import TelegramMessageHandler, _chat_scoped_user_id, build_application
 
 
 def _saved_item(*, title: str = "Saved Title") -> SavedItem:
@@ -60,6 +60,42 @@ class FakeArchiveReview:
         ]
 
 
+class RecordingTelegramHandler:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    async def handle_text(self, *, user_id: str, text: str, reply) -> None:
+        self.calls.append({"user_id": user_id, "text": text, "reply": reply})
+        await reply("handled")
+
+
+class RecordingMessage:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.replies: list[str] = []
+
+    async def reply_text(self, text: str) -> None:
+        self.replies.append(text)
+
+
+def _text_update(*, chat_id: int, text: str = "hello"):
+    message = RecordingMessage(text)
+    update = type(
+        "Update",
+        (),
+        {
+            "effective_user": type("User", (), {"id": 111})(),
+            "effective_chat": type("Chat", (), {"id": chat_id})(),
+            "message": message,
+        },
+    )()
+    return update, message
+
+
+def _message_callback(application):
+    return application.handlers[0][0].callback
+
+
 def test_chat_scoped_user_id_uses_chat_id_when_user_differs() -> None:
     update = type(
         "Update",
@@ -71,6 +107,46 @@ def test_chat_scoped_user_id_uses_chat_id_when_user_differs() -> None:
     )()
 
     assert _chat_scoped_user_id(update) == "telegram:-222"
+
+
+@pytest.mark.asyncio
+async def test_application_ignores_disallowed_chat_before_handling_text() -> None:
+    handler = RecordingTelegramHandler()
+    application = build_application(handler, "token", allowed_chat_id="123")
+    update, message = _text_update(chat_id=999)
+
+    await _message_callback(application)(update, None)
+
+    assert handler.calls == []
+    assert message.replies == []
+
+
+@pytest.mark.asyncio
+async def test_application_processes_allowed_chat() -> None:
+    handler = RecordingTelegramHandler()
+    application = build_application(handler, "token", allowed_chat_id="123")
+    update, message = _text_update(chat_id=123)
+
+    await _message_callback(application)(update, None)
+
+    assert handler.calls == [
+        {"user_id": "telegram:123", "text": "hello", "reply": message.reply_text},
+    ]
+    assert message.replies == ["handled"]
+
+
+@pytest.mark.asyncio
+async def test_application_processes_any_chat_without_allowed_chat_config() -> None:
+    handler = RecordingTelegramHandler()
+    application = build_application(handler, "token")
+    update, message = _text_update(chat_id=999)
+
+    await _message_callback(application)(update, None)
+
+    assert handler.calls == [
+        {"user_id": "telegram:999", "text": "hello", "reply": message.reply_text},
+    ]
+    assert message.replies == ["handled"]
 
 
 @pytest.mark.asyncio

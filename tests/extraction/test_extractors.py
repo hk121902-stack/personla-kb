@@ -1,7 +1,17 @@
+import socket
+
 import httpx
 import pytest
 
-from kb_agent.extraction.extractors import WebpageExtractor
+from kb_agent.extraction.extractors import MAX_WEBPAGE_BODY_BYTES, WebpageExtractor
+
+
+@pytest.fixture(autouse=True)
+def resolve_hostnames_to_public_ip(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[object, ...]]:
+        return [(None, None, None, None, ("93.184.216.34", 443))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
 
 
 @pytest.mark.asyncio
@@ -87,3 +97,108 @@ async def test_webpage_extractor_returns_none_for_oversized_response_body() -> N
         extractor = WebpageExtractor(client=client)
 
         assert await extractor.extract("https://example.com/large") is None
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_rejects_hostname_resolving_to_private_ip_before_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[object, ...]]:
+        return [(None, None, None, None, ("10.0.0.1", 443))]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, text="<html><body>unsafe</body></html>")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+
+        assert await extractor.extract("https://attacker.example/admin") is None
+
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_returns_none_when_dns_resolution_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[object, ...]]:
+        raise socket.gaierror("dns unavailable")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, text="<html><body>unsafe</body></html>")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+
+        assert await extractor.extract("https://example.com/offline") is None
+
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_allows_hostname_resolving_to_public_ip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[object, ...]]:
+        return [(None, None, None, None, ("93.184.216.34", 443))]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, text="<html><body>public page</body></html>")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://example.com/page")
+
+    assert called is True
+    assert result is not None
+    assert "public page" in result.text
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_aborts_streaming_body_over_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks_read = 0
+
+    def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[object, ...]]:
+        return [(None, None, None, None, ("93.184.216.34", 443))]
+
+    class StreamingBody(httpx.AsyncByteStream):
+        async def __aiter__(self) -> object:
+            nonlocal chunks_read
+            chunks_read += 1
+            yield b"x" * MAX_WEBPAGE_BODY_BYTES
+            chunks_read += 1
+            yield b"y"
+            chunks_read += 1
+            yield b"z"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=StreamingBody())
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+
+        assert await extractor.extract("https://example.com/large") is None
+
+    assert chunks_read == 2
