@@ -136,17 +136,47 @@ def _build_trigger(job: DigestJob) -> CronTrigger:
     return CronTrigger(hour=job.hour, minute=0, timezone=job.timezone)
 
 
+def install_runtime_lifecycle(runtime: Any) -> None:
+    previous_post_init = runtime.application.post_init
+    previous_post_shutdown = runtime.application.post_shutdown
+
+    async def post_init(application: Application) -> None:
+        if previous_post_init is not None:
+            await previous_post_init(application)
+        if runtime.scheduler is not None and not runtime.scheduler.running:
+            runtime.scheduler.start()
+
+    async def post_shutdown(application: Application) -> None:
+        if runtime.scheduler is not None and runtime.scheduler.running:
+            runtime.scheduler.shutdown(wait=False)
+        await _close_http_client(runtime.http_client)
+        if previous_post_shutdown is not None:
+            await previous_post_shutdown(application)
+
+    runtime.application.post_init = post_init
+    runtime.application.post_shutdown = post_shutdown
+
+
 def main() -> None:
     settings = Settings.from_env()
     runtime = build_runtime(settings)
+    install_runtime_lifecycle(runtime)
     try:
-        if runtime.scheduler is not None:
-            runtime.scheduler.start()
         runtime.application.run_polling()
     finally:
         if runtime.scheduler is not None and runtime.scheduler.running:
             runtime.scheduler.shutdown(wait=False)
-        asyncio.run(runtime.http_client.aclose())
+        if not _is_http_client_closed(runtime.http_client):
+            asyncio.run(_close_http_client(runtime.http_client))
+
+
+async def _close_http_client(http_client: httpx.AsyncClient) -> None:
+    if not _is_http_client_closed(http_client):
+        await http_client.aclose()
+
+
+def _is_http_client_closed(http_client: httpx.AsyncClient) -> bool:
+    return bool(getattr(http_client, "is_closed", False))
 
 
 if __name__ == "__main__":
