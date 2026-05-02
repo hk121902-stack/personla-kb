@@ -11,6 +11,15 @@ def test_plain_link_becomes_save_command() -> None:
     assert command.priority is Priority.HIGH
 
 
+def test_plain_link_accepts_priority_without_colon() -> None:
+    command = parse_message("https://youtu.be/abc note: watch this priority high")
+
+    assert isinstance(command, SaveCommand)
+    assert command.url == "https://youtu.be/abc"
+    assert command.note == "watch this"
+    assert command.priority is Priority.HIGH
+
+
 def test_plain_question_becomes_ask_command() -> None:
     command = parse_message("what did I save about vector databases?")
 

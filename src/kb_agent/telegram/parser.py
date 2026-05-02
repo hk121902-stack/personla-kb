@@ -7,9 +7,10 @@ from typing import Literal
 from kb_agent.core.models import Priority
 
 _URL_RE = re.compile(r"https?://\S+")
-_PRIORITY_RE = re.compile(r"\bpriority:\s*(high|medium|low)\b", re.IGNORECASE)
+_PRIORITY_PATTERN = r"\bpriority:?\s*(high|medium|low)\b"
+_PRIORITY_RE = re.compile(_PRIORITY_PATTERN, re.IGNORECASE)
 _NOTE_RE = re.compile(
-    r"\bnote:\s*(?P<note>.*?)(?=\s+\bpriority:\s*(?:high|medium|low)\b|$)",
+    rf"\bnote:\s*(?P<note>.*?)(?=\s+{_PRIORITY_PATTERN}|$)",
     re.IGNORECASE,
 )
 _INCLUDE_ARCHIVED_RE = re.compile(r"\binclude\s+archived\b", re.IGNORECASE)
