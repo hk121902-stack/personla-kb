@@ -1,5 +1,7 @@
 import asyncio
+from datetime import datetime
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -29,13 +31,16 @@ class FakeApplication:
     def __init__(self) -> None:
         self.bot = FakeBot()
         self.post_init = None
+        self.post_stop = None
         self.post_shutdown = None
 
     def run_polling(self) -> None:
         async def run_lifecycle() -> None:
             assert self.post_init is not None
+            assert self.post_stop is not None
             assert self.post_shutdown is not None
             await self.post_init(self)
+            await self.post_stop(self)
             await self.post_shutdown(self)
 
         asyncio.run(run_lifecycle())
@@ -74,9 +79,15 @@ def test_register_digest_jobs_adds_daily_and_weekly_cron_jobs() -> None:
     )
 
     assert [job["name"] for job in scheduler.jobs] == ["daily_digest", "weekly_digest"]
-    assert [job["trigger"].fields[5].expressions[0].first for job in scheduler.jobs] == [9, 10]
-    assert scheduler.jobs[0]["trigger"].fields[4].expressions[0].__str__() == "*"
-    assert scheduler.jobs[1]["trigger"].fields[4].expressions[0].__str__() == "sun"
+    fixed_now = datetime(2026, 5, 2, 8, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+    next_fire_times = [
+        job["trigger"].get_next_fire_time(None, fixed_now)
+        for job in scheduler.jobs
+    ]
+    assert next_fire_times == [
+        datetime(2026, 5, 2, 9, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+        datetime(2026, 5, 3, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+    ]
 
 
 async def test_registered_digest_callback_sends_digest_message() -> None:
@@ -105,7 +116,7 @@ async def test_registered_digest_callback_sends_digest_message() -> None:
 def test_main_starts_and_stops_scheduler_from_application_lifecycle(monkeypatch) -> None:
     scheduler = LoopCheckingScheduler()
     application = FakeApplication()
-    http_client = FakeHttpClient()
+    http_client = FakeHttpClient(scheduler.events)
     runtime = SimpleNamespace(
         scheduler=scheduler,
         application=application,
@@ -121,12 +132,36 @@ def test_main_starts_and_stops_scheduler_from_application_lifecycle(monkeypatch)
 
     app_module.main()
 
-    assert scheduler.events == ["start", ("shutdown", False)]
+    assert scheduler.events == ["start", ("shutdown", False), "http_close"]
     assert http_client.closed
     assert http_client.close_count == 1
 
 
-async def test_post_shutdown_waits_for_real_scheduler_to_stop() -> None:
+async def test_scheduler_stops_in_post_stop_before_http_client_closes() -> None:
+    events = []
+    scheduler = LoopCheckingScheduler(events)
+    application = FakeApplication()
+    http_client = FakeHttpClient(events)
+
+    async def previous_post_stop(_application) -> None:
+        events.append("previous_post_stop")
+
+    application.post_stop = previous_post_stop
+    runtime = SimpleNamespace(
+        scheduler=scheduler,
+        application=application,
+        http_client=http_client,
+    )
+
+    install_runtime_lifecycle(runtime)
+    await application.post_init(application)
+    await application.post_stop(application)
+    await application.post_shutdown(application)
+
+    assert events == ["start", ("shutdown", False), "previous_post_stop", "http_close"]
+
+
+async def test_post_stop_waits_for_real_scheduler_to_stop() -> None:
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
     application = FakeApplication()
     http_client = FakeHttpClient()
@@ -140,15 +175,16 @@ async def test_post_shutdown_waits_for_real_scheduler_to_stop() -> None:
     await application.post_init(application)
     assert scheduler.running
 
-    await application.post_shutdown(application)
+    await application.post_stop(application)
 
     assert not scheduler.running
+    await application.post_shutdown(application)
     assert http_client.closed
 
 
 class LoopCheckingScheduler:
-    def __init__(self) -> None:
-        self.events = []
+    def __init__(self, events: list | None = None) -> None:
+        self.events = events if events is not None else []
         self.running = False
 
     def start(self) -> None:
@@ -162,7 +198,8 @@ class LoopCheckingScheduler:
 
 
 class FakeHttpClient:
-    def __init__(self) -> None:
+    def __init__(self, events: list | None = None) -> None:
+        self.events = events
         self.closed = False
         self.close_count = 0
 
@@ -172,4 +209,6 @@ class FakeHttpClient:
 
     async def aclose(self) -> None:
         self.close_count += 1
+        if self.events is not None:
+            self.events.append("http_close")
         self.closed = True

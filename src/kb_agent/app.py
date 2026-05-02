@@ -138,6 +138,7 @@ def _build_trigger(job: DigestJob) -> CronTrigger:
 
 def install_runtime_lifecycle(runtime: Any) -> None:
     previous_post_init = runtime.application.post_init
+    previous_post_stop = runtime.application.post_stop
     previous_post_shutdown = runtime.application.post_shutdown
 
     async def post_init(application: Application) -> None:
@@ -146,15 +147,20 @@ def install_runtime_lifecycle(runtime: Any) -> None:
         if runtime.scheduler is not None and not runtime.scheduler.running:
             runtime.scheduler.start()
 
-    async def post_shutdown(application: Application) -> None:
+    async def post_stop(application: Application) -> None:
         if runtime.scheduler is not None and runtime.scheduler.running:
             runtime.scheduler.shutdown(wait=False)
             await asyncio.sleep(0)
+        if previous_post_stop is not None:
+            await previous_post_stop(application)
+
+    async def post_shutdown(application: Application) -> None:
         await _close_http_client(runtime.http_client)
         if previous_post_shutdown is not None:
             await previous_post_shutdown(application)
 
     runtime.application.post_init = post_init
+    runtime.application.post_stop = post_stop
     runtime.application.post_shutdown = post_shutdown
 
 

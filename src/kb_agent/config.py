@@ -60,7 +60,10 @@ def _env_hour(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None:
         return default
-    hour = int(value)
+    try:
+        hour = int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be an integer hour between 0 and 23") from error
     if hour < 0 or hour > 23:
         raise ValueError(f"{name} must be between 0 and 23")
     return hour

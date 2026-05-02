@@ -31,3 +31,11 @@ def test_settings_rejects_invalid_schedule_config(monkeypatch, name: str, value:
 
     with pytest.raises(ValueError):
         Settings.from_env()
+
+
+def test_settings_rejects_non_integer_digest_hour_with_config_error(monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("KB_DAILY_DIGEST_HOUR", "morning")
+
+    with pytest.raises(ValueError, match="KB_DAILY_DIGEST_HOUR must be an integer hour"):
+        Settings.from_env()

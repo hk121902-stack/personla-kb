@@ -165,10 +165,15 @@ class TelegramMessageHandler:
 
 def build_application(handler: TelegramMessageHandler, token: str) -> Application:
     async def handle_update(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        if update.effective_user is None or update.message is None or update.message.text is None:
+        if (
+            update.effective_user is None
+            or update.effective_chat is None
+            or update.message is None
+            or update.message.text is None
+        ):
             return
 
-        user_id = f"telegram:{update.effective_user.id}"
+        user_id = _chat_scoped_user_id(update)
         await handler.handle_text(
             user_id=user_id,
             text=update.message.text,
@@ -178,6 +183,10 @@ def build_application(handler: TelegramMessageHandler, token: str) -> Applicatio
     application = Application.builder().token(token).build()
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_update))
     return application
+
+
+def _chat_scoped_user_id(update: Update) -> str:
+    return f"telegram:{update.effective_chat.id}"
 
 
 async def _send(reply: Reply, text: str) -> None:

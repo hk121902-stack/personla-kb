@@ -7,7 +7,7 @@ import pytest
 
 from kb_agent.core.archive_review import ArchiveRecommendation
 from kb_agent.core.models import SavedItem, SourceType, Status
-from kb_agent.telegram.bot import TelegramMessageHandler
+from kb_agent.telegram.bot import TelegramMessageHandler, _chat_scoped_user_id
 
 
 def _saved_item(*, title: str = "Saved Title") -> SavedItem:
@@ -58,6 +58,19 @@ class FakeArchiveReview:
                 reason="old_low_priority",
             ),
         ]
+
+
+def test_chat_scoped_user_id_uses_chat_id_when_user_differs() -> None:
+    update = type(
+        "Update",
+        (),
+        {
+            "effective_user": type("User", (), {"id": 111})(),
+            "effective_chat": type("Chat", (), {"id": -222})(),
+        },
+    )()
+
+    assert _chat_scoped_user_id(update) == "telegram:-222"
 
 
 @pytest.mark.asyncio
