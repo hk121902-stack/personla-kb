@@ -8,6 +8,14 @@ from bs4 import BeautifulSoup
 from kb_agent.core.models import ExtractedContent
 
 
+class StaticExtractor:
+    def __init__(self, content: ExtractedContent | None) -> None:
+        self.content = content
+
+    async def extract(self, url: str) -> ExtractedContent | None:
+        return self.content
+
+
 @dataclass(frozen=True)
 class WebpageExtractor:
     client: httpx.AsyncClient
