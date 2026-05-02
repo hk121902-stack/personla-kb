@@ -118,7 +118,8 @@ async def test_handler_prompts_for_note_when_saved_link_needs_text() -> None:
         "Priority: unset\n"
         "Status: needs_text",
         "I saved the link, but could not extract text from: https://example.com/rag\n"
-        "Paste the useful text as a note by sending: save https://example.com/rag note: <text>",
+        "Send the useful text and I will use it as saved content: "
+        "save https://example.com/rag note: <text>",
     ]
 
 

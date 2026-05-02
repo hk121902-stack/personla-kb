@@ -77,6 +77,33 @@ async def test_save_link_survives_extraction_failure(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_save_link_uses_note_as_manual_content_when_extraction_returns_none(
+    tmp_path,
+) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+
+    item = await service.save_link(
+        user_id="telegram:123",
+        url="https://linkedin.com/posts/private",
+        note="Example Domain explains private fallback retrieval.",
+    )
+
+    assert item.status is Status.READY
+    assert item.title == "https://linkedin.com/posts/private"
+    assert item.user_note == "Example Domain explains private fallback retrieval."
+    assert item.extracted_text == "Example Domain explains private fallback retrieval."
+    assert item.summary == "Example Domain explains private fallback retrieval."
+    assert "example" in item.tags
+    assert repo.get(item.id) == item
+
+
+@pytest.mark.asyncio
 async def test_save_link_persists_needs_text_when_extractor_raises(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     service = KnowledgeService(
@@ -94,6 +121,33 @@ async def test_save_link_persists_needs_text_when_extractor_raises(tmp_path) -> 
     assert item.status is Status.NEEDS_TEXT
     assert item.status is not Status.PROCESSING
     assert item.updated_at == FixedClock().now()
+    assert repo.get(item.id) == item
+
+
+@pytest.mark.asyncio
+async def test_save_link_uses_note_as_manual_content_when_extractor_raises(
+    tmp_path,
+) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=ThrowingExtractor(),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+
+    item = await service.save_link(
+        user_id="telegram:123",
+        url="https://example.com/private",
+        note="Example Domain manual source content for digest search.",
+    )
+
+    assert item.status is Status.READY
+    assert item.title == "https://example.com/private"
+    assert item.user_note == "Example Domain manual source content for digest search."
+    assert item.extracted_text == "Example Domain manual source content for digest search."
+    assert item.summary == "Example Domain manual source content for digest search."
+    assert "manual" in item.tags
     assert repo.get(item.id) == item
 
 

@@ -39,5 +39,6 @@ def test_needs_text_prompt_tells_user_to_save_note() -> None:
 
     assert text == (
         "I saved the link, but could not extract text from: https://example.com/rag\n"
-        "Paste the useful text as a note by sending: save https://example.com/rag note: <text>"
+        "Send the useful text and I will use it as saved content: "
+        "save https://example.com/rag note: <text>"
     )

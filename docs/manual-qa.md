@@ -9,7 +9,7 @@
 5. Send `https://example.com`.
 6. Confirm the bot replies with `Saved:`.
 7. Send `ask example domain`.
-8. Confirm the bot replies with `From your knowledge base`.
+8. Confirm the bot replies with `From your knowledge base`, includes the Example Domain source/content, and does not say `No strong saved source match`.
 9. Send `digest today`.
 10. Confirm the bot returns 1-3 active items.
 11. Send `review archive`.

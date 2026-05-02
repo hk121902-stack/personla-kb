@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from kb_agent.core.models import Priority, SavedItem, Status
+from kb_agent.core.models import ExtractedContent, Priority, SavedItem, Status
 from kb_agent.core.ports import AIProvider, Clock, Extractor, ItemRepository
 from kb_agent.extraction.url_parser import detect_source_type
 
@@ -48,6 +48,9 @@ class KnowledgeService:
         try:
             extracted = await self.extractor.extract(url)
         except Exception:
+            extracted = _manual_extracted_content(item)
+            if extracted is not None:
+                return await self._enrich_and_save(item, extracted)
             failed = replace(
                 item,
                 status=Status.NEEDS_TEXT,
@@ -56,6 +59,16 @@ class KnowledgeService:
             self.repository.save(failed)
             return failed
 
+        if extracted is None:
+            extracted = _manual_extracted_content(item)
+
+        return await self._enrich_and_save(item, extracted)
+
+    async def _enrich_and_save(
+        self,
+        item: SavedItem,
+        extracted: ExtractedContent | None,
+    ) -> SavedItem:
         try:
             enriched = await self.ai_provider.enrich(item, extracted)
         except Exception:
@@ -110,3 +123,15 @@ class KnowledgeService:
         if item is None or item.user_id != user_id:
             raise ValueError("Saved item not found")
         return item
+
+
+def _manual_extracted_content(item: SavedItem) -> ExtractedContent | None:
+    text = item.user_note.strip()
+    if not text:
+        return None
+
+    return ExtractedContent(
+        title=item.url,
+        text=text,
+        metadata={"extraction": "manual_note"},
+    )
