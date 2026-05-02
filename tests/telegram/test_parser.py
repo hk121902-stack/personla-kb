@@ -1,5 +1,14 @@
 from kb_agent.core.models import Priority
-from kb_agent.telegram.parser import AskCommand, ParseCommand, SaveCommand, parse_message
+from kb_agent.telegram.parser import (
+    ArchiveCommand,
+    AskCommand,
+    DigestCommand,
+    ParseCommand,
+    ReviewArchiveCommand,
+    SaveCommand,
+    ShowCommand,
+    parse_message,
+)
 
 
 def test_plain_link_becomes_save_command() -> None:
@@ -18,6 +27,54 @@ def test_plain_link_accepts_priority_without_colon() -> None:
     assert command.url == "https://youtu.be/abc"
     assert command.note == "watch this"
     assert command.priority is Priority.HIGH
+
+
+def test_save_command_link_without_note_has_empty_note() -> None:
+    command = parse_message("save https://example.com/rag")
+
+    assert isinstance(command, SaveCommand)
+    assert command.url == "https://example.com/rag"
+    assert command.note == ""
+
+
+def test_plain_link_trims_trailing_sentence_punctuation() -> None:
+    command = parse_message("save https://example.com/rag.")
+
+    assert isinstance(command, SaveCommand)
+    assert command.url == "https://example.com/rag"
+    assert command.note == ""
+
+
+def test_digest_today_command() -> None:
+    command = parse_message("digest today")
+
+    assert isinstance(command, DigestCommand)
+    assert command.kind == "today"
+
+
+def test_digest_week_command() -> None:
+    command = parse_message("digest week")
+
+    assert isinstance(command, DigestCommand)
+    assert command.kind == "week"
+
+
+def test_review_archive_command() -> None:
+    assert isinstance(parse_message("review archive"), ReviewArchiveCommand)
+
+
+def test_archive_command() -> None:
+    command = parse_message("archive item123")
+
+    assert isinstance(command, ArchiveCommand)
+    assert command.item_id == "item123"
+
+
+def test_show_command() -> None:
+    command = parse_message("show vector databases")
+
+    assert isinstance(command, ShowCommand)
+    assert command.query == "vector databases"
 
 
 def test_plain_question_becomes_ask_command() -> None:

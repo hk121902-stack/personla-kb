@@ -7,6 +7,8 @@ from typing import Literal
 from kb_agent.core.models import Priority
 
 _URL_RE = re.compile(r"https?://\S+")
+_TRAILING_URL_PUNCTUATION = ".,;:!?"
+_SAVE_VERB_RE = re.compile(r"^\s*save\b", re.IGNORECASE)
 _PRIORITY_PATTERN = r"\bpriority:?\s*(high|medium|low)\b"
 _PRIORITY_RE = re.compile(_PRIORITY_PATTERN, re.IGNORECASE)
 _NOTE_RE = re.compile(
@@ -71,9 +73,11 @@ def parse_message(
 
     url_match = _URL_RE.search(text)
     if url_match:
+        raw_url = url_match.group(0)
+        url = _clean_url(raw_url)
         return SaveCommand(
-            url=url_match.group(0),
-            note=_parse_note(text, url_match.group(0)),
+            url=url,
+            note=_parse_note(text, raw_url),
             priority=_parse_priority(text),
         )
 
@@ -106,6 +110,10 @@ def _after_command(text: str) -> str:
     return parts[1].strip()
 
 
+def _clean_url(url: str) -> str:
+    return url.rstrip(_TRAILING_URL_PUNCTUATION)
+
+
 def _parse_note(text: str, url: str) -> str:
     note_match = _NOTE_RE.search(text)
     if note_match is not None:
@@ -113,7 +121,8 @@ def _parse_note(text: str, url: str) -> str:
 
     without_url = text.replace(url, "", 1)
     without_priority = _PRIORITY_RE.sub("", without_url)
-    return without_priority.strip()
+    without_save_verb = _SAVE_VERB_RE.sub("", without_priority, count=1)
+    return without_save_verb.strip()
 
 
 def _parse_ask(text: str) -> AskCommand:
