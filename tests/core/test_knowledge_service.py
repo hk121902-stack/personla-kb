@@ -152,6 +152,35 @@ async def test_save_link_uses_note_as_manual_content_when_extractor_raises(
 
 
 @pytest.mark.asyncio
+async def test_save_link_note_completes_existing_needs_text_item_without_duplicate(
+    tmp_path,
+) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=ThrowingExtractor(),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+    pending = await service.save_link(
+        user_id="telegram:123",
+        url="https://example.com/private",
+    )
+
+    completed = await service.save_link(
+        user_id="telegram:123",
+        url="https://example.com/private",
+        note="Manual content to complete the blocked private link.",
+    )
+
+    assert completed.id == pending.id
+    assert completed.status is Status.READY
+    assert completed.user_note == "Manual content to complete the blocked private link."
+    assert completed.extracted_text == "Manual content to complete the blocked private link."
+    assert repo.list_by_user("telegram:123") == [completed]
+
+
+@pytest.mark.asyncio
 async def test_save_link_persists_failed_enrichment_when_ai_provider_raises(
     tmp_path,
 ) -> None:

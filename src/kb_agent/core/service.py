@@ -36,14 +36,22 @@ class KnowledgeService:
         priority: Priority = Priority.UNSET,
     ) -> SavedItem:
         now = self.clock.now()
-        item = SavedItem.new(
+        item = self._pending_manual_fallback_item(
             user_id=user_id,
             url=url,
-            source_type=detect_source_type(url),
-            now=now,
             note=note,
             priority=priority,
+            now=now,
         )
+        if item is None:
+            item = SavedItem.new(
+                user_id=user_id,
+                url=url,
+                source_type=detect_source_type(url),
+                now=now,
+                note=note,
+                priority=priority,
+            )
         self.repository.save(item)
         try:
             extracted = await self.extractor.extract(url)
@@ -123,6 +131,33 @@ class KnowledgeService:
         if item is None or item.user_id != user_id:
             raise ValueError("Saved item not found")
         return item
+
+    def _pending_manual_fallback_item(
+        self,
+        *,
+        user_id: str,
+        url: str,
+        note: str,
+        priority: Priority,
+        now: datetime,
+    ) -> SavedItem | None:
+        if not note.strip():
+            return None
+
+        for item in self.repository.list_by_user(user_id):
+            if item.url == url and item.status == Status.NEEDS_TEXT:
+                selected_priority = item.priority
+                if priority is not Priority.UNSET:
+                    selected_priority = priority
+                return replace(
+                    item,
+                    user_note=note,
+                    priority=selected_priority,
+                    status=Status.PROCESSING,
+                    updated_at=now,
+                )
+
+        return None
 
 
 def _manual_extracted_content(item: SavedItem) -> ExtractedContent | None:
