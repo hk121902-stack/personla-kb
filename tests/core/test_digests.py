@@ -95,3 +95,23 @@ def test_weekly_digest_marks_items_surfaced(tmp_path) -> None:
     assert all(saved.surface_count == 1 for saved in digest.items)
     assert repo.get(digest.items[0].id).last_surfaced_at == SURFACED_AT
     assert repo.get(digest.items[1].id).surface_count == 1
+
+
+def test_weekly_digest_rotates_after_surfaced_metadata_is_persisted(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    for index in range(8):
+        repo.save(item(f"item-{index}", Priority.HIGH, index))
+
+    first_digest = DigestService(repo, now=lambda: SURFACED_AT).weekly(
+        user_id="telegram:123",
+    )
+    second_digest = DigestService(repo, now=lambda: NEXT_SURFACED_AT).weekly(
+        user_id="telegram:123",
+    )
+
+    first_ids = {saved.id for saved in first_digest.items}
+    second_ids = {saved.id for saved in second_digest.items}
+
+    assert len(first_digest.items) == 7
+    assert len(second_digest.items) == 7
+    assert second_ids - first_ids

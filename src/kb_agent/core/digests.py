@@ -44,7 +44,10 @@ class DigestService:
         return Digest(text="\n".join(lines), items=items)
 
     def weekly(self, *, user_id: str) -> Digest:
-        items = _ready_items(self.repository, user_id)[:_WEEKLY_LIMIT]
+        items = sorted(
+            _ready_items(self.repository, user_id),
+            key=_weekly_sort_key,
+        )[:_WEEKLY_LIMIT]
         items = self._mark_surfaced(items)
         lines = ["Weekly synthesis"]
         for topic, topic_items in _group_by_topic(items).items():
@@ -84,6 +87,19 @@ def _daily_sort_key(item: SavedItem) -> tuple[int, datetime, float]:
         _PRIORITY_ORDER[item.priority],
         surfaced_at,
         -item.created_at.timestamp(),
+    )
+
+
+def _weekly_sort_key(item: SavedItem) -> tuple[datetime, int, int, datetime, str]:
+    surfaced_at = item.last_surfaced_at or datetime.min.replace(
+        tzinfo=item.created_at.tzinfo,
+    )
+    return (
+        surfaced_at,
+        item.surface_count,
+        _PRIORITY_ORDER[item.priority],
+        item.created_at,
+        item.id,
     )
 
 
