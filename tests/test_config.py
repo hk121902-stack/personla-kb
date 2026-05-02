@@ -16,6 +16,15 @@ def test_settings_reads_environment(monkeypatch) -> None:
     assert settings.ai_provider == "heuristic"
 
 
+def test_settings_requires_telegram_chat_id(monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.delenv("KB_TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+
+    with pytest.raises(ValueError, match="KB_TELEGRAM_CHAT_ID is required"):
+        Settings.from_env()
+
+
 @pytest.mark.parametrize(
     ("name", "value"),
     [
@@ -27,6 +36,7 @@ def test_settings_reads_environment(monkeypatch) -> None:
 )
 def test_settings_rejects_invalid_schedule_config(monkeypatch, name: str, value: str) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("KB_TELEGRAM_CHAT_ID", "123")
     monkeypatch.setenv(name, value)
 
     with pytest.raises(ValueError):
@@ -35,6 +45,7 @@ def test_settings_rejects_invalid_schedule_config(monkeypatch, name: str, value:
 
 def test_settings_rejects_non_integer_digest_hour_with_config_error(monkeypatch) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("KB_TELEGRAM_CHAT_ID", "123")
     monkeypatch.setenv("KB_DAILY_DIGEST_HOUR", "morning")
 
     with pytest.raises(ValueError, match="KB_DAILY_DIGEST_HOUR must be an integer hour"):

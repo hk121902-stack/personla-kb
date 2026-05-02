@@ -28,6 +28,10 @@ class Settings:
         if not token:
             raise ValueError("TELEGRAM_BOT_TOKEN is required")
 
+        telegram_chat_id = _optional_env("KB_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID")
+        if telegram_chat_id is None:
+            raise ValueError("KB_TELEGRAM_CHAT_ID is required")
+
         timezone = os.getenv("KB_TIMEZONE", cls.timezone)
         _validate_timezone(timezone)
         daily_digest_hour = _env_hour("KB_DAILY_DIGEST_HOUR", cls.daily_digest_hour)
@@ -38,7 +42,7 @@ class Settings:
 
         return cls(
             telegram_bot_token=token,
-            telegram_chat_id=_optional_env("KB_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID"),
+            telegram_chat_id=telegram_chat_id,
             database_path=os.getenv("KB_DATABASE_PATH", cls.database_path),
             timezone=timezone,
             daily_digest_hour=daily_digest_hour,

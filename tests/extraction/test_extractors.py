@@ -70,6 +70,7 @@ async def test_webpage_extractor_returns_none_when_request_fails() -> None:
         "http://224.0.0.1/admin",
         "http://0.0.0.0/admin",
         "http://240.0.0.1/admin",
+        "http://100.64.0.1/admin",
     ],
 )
 async def test_webpage_extractor_rejects_unsafe_literal_hosts_before_request(url: str) -> None:
@@ -170,6 +171,36 @@ async def test_webpage_extractor_allows_hostname_resolving_to_public_ip(
     assert called is True
     assert result is not None
     assert "public page" in result.text
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_fetches_resolved_ip_with_original_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_request: httpx.Request | None = None
+
+    def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[object, ...]]:
+        return [(None, None, None, None, ("93.184.216.34", 443))]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_request
+        seen_request = request
+        return httpx.Response(200, text="<html><body>pinned</body></html>")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://example.com:8443/page?q=1")
+
+    assert result is not None
+    assert seen_request is not None
+    assert seen_request.url.host == "93.184.216.34"
+    assert seen_request.url.port == 8443
+    assert seen_request.url.path == "/page"
+    assert seen_request.url.query == b"q=1"
+    assert seen_request.headers["host"] == "example.com:8443"
+    assert seen_request.extensions["sni_hostname"] == "example.com"
 
 
 @pytest.mark.asyncio

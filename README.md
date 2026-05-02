@@ -14,13 +14,13 @@ ruff check .
 
 ## Runtime
 
-Copy `.env.example` to `.env`, fill `TELEGRAM_BOT_TOKEN`, then run the bot:
+Copy `.env.example` to `.env`, fill `TELEGRAM_BOT_TOKEN` and `KB_TELEGRAM_CHAT_ID`, then run the bot:
 
 ```bash
 python -m kb_agent.app
 ```
 
-`TELEGRAM_BOT_TOKEN` is required. `KB_TELEGRAM_CHAT_ID` enables scheduled proactive digests and restricts inbound processing to that chat; it should match the chat where items are saved because the bot stores knowledge by chat id.
+`TELEGRAM_BOT_TOKEN` and `KB_TELEGRAM_CHAT_ID` are required. `KB_TELEGRAM_CHAT_ID` enables scheduled proactive digests and restricts inbound processing to that chat; it should match the chat where items are saved because the bot stores knowledge by chat id.
 
 Digest scheduling is controlled by `KB_DAILY_DIGEST_HOUR`, `KB_WEEKLY_DIGEST_DAY`, `KB_WEEKLY_DIGEST_HOUR`, and `KB_TIMEZONE`. `KB_AI_PROVIDER` is reserved for provider selection; this MVP supports only `heuristic`, which runs without an external API key.
 
