@@ -2,7 +2,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 from kb_agent.core.models import Priority, SavedItem, SourceType, Status
-from kb_agent.telegram.formatter import format_save_confirmation
+from kb_agent.telegram.formatter import format_needs_text_prompt, format_save_confirmation
 
 
 def test_save_confirmation_is_compact() -> None:
@@ -25,3 +25,19 @@ def test_save_confirmation_is_compact() -> None:
     assert "Tags: rag, retrieval" in text
     assert "Priority: high" in text
     assert "Status: ready" in text
+
+
+def test_needs_text_prompt_tells_user_to_save_note() -> None:
+    item = SavedItem.new(
+        user_id="telegram:123",
+        url="https://example.com/rag",
+        source_type=SourceType.WEB,
+        now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+    )
+
+    text = format_needs_text_prompt(item)
+
+    assert text == (
+        "I saved the link, but could not extract text from: https://example.com/rag\n"
+        "Paste the useful text as a note by sending: save https://example.com/rag note: <text>"
+    )

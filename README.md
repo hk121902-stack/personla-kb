@@ -33,10 +33,10 @@ Digest scheduling is controlled by `KB_DAILY_DIGEST_HOUR`, `KB_WEEKLY_DIGEST_DAY
 - `digest week`
 - `review archive`
 - `archive <item_id>`
-- `show <topic-or-tag>`
+- `show <topic-or-tag-or-query>`
 
 Archived items are excluded from default answers and digests.
 
 ## Extraction Fallback
 
-Some X and LinkedIn content may be blocked by platform access rules. The bot still saves the link and asks you to paste the useful text when extraction fails.
+Some X and LinkedIn content may be blocked by platform access rules. The bot still saves the link and asks you to paste the useful text as a note by sending `save <url> note: <text>` when extraction fails.

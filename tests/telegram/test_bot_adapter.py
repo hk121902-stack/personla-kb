@@ -93,6 +93,36 @@ async def test_handler_saves_plain_link() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handler_prompts_for_note_when_saved_link_needs_text() -> None:
+    replies = []
+    knowledge = FakeKnowledge()
+    needs_text_item = replace(_saved_item(), status=Status.NEEDS_TEXT, title="https://example.com/rag")
+    knowledge.save_link = lambda **_: needs_text_item
+    handler = TelegramMessageHandler(
+        knowledge=knowledge,
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="https://example.com/rag",
+        reply=replies.append,
+    )
+
+    assert replies == [
+        "Saved: https://example.com/rag\n"
+        "URL: https://example.com/rag\n"
+        "Tags: saved\n"
+        "Priority: unset\n"
+        "Status: needs_text",
+        "I saved the link, but could not extract text from: https://example.com/rag\n"
+        "Paste the useful text as a note by sending: save https://example.com/rag note: <text>",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_handler_answers_plain_question() -> None:
     replies = []
     handler = TelegramMessageHandler(

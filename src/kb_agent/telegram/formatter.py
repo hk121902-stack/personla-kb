@@ -29,7 +29,7 @@ def format_needs_text_prompt(item: SavedItem) -> str:
     return "\n".join(
         [
             f"I saved the link, but could not extract text from: {item.url}",
-            "Reply with the key text or a short note when you have it.",
+            f"Paste the useful text as a note by sending: save {item.url} note: <text>",
         ],
     )
 

@@ -8,9 +8,11 @@ from typing import Any
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
+from kb_agent.core.models import Status
 from kb_agent.telegram.formatter import (
     format_archive_recommendations,
     format_daily_digest,
+    format_needs_text_prompt,
     format_retrieval_response,
     format_save_confirmation,
     format_weekly_digest,
@@ -61,6 +63,8 @@ class TelegramMessageHandler:
                 ),
             )
             await _send(reply, format_save_confirmation(item))
+            if item.status is Status.NEEDS_TEXT:
+                await _send(reply, format_needs_text_prompt(item))
             return
 
         if isinstance(command, AskCommand):
