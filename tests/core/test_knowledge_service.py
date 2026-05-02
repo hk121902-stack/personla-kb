@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from kb_agent.ai.providers import HeuristicAIProvider
-from kb_agent.core.models import ExtractedContent, Priority, Status
+from kb_agent.core.models import ExtractedContent, Priority, SavedItem, Status
 from kb_agent.core.service import KnowledgeService, SystemClock
 from kb_agent.extraction.extractors import StaticExtractor
 from kb_agent.storage.sqlite import SQLiteItemRepository
@@ -12,6 +12,20 @@ from kb_agent.storage.sqlite import SQLiteItemRepository
 class FixedClock(SystemClock):
     def now(self):
         return datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
+
+
+class ThrowingExtractor:
+    async def extract(self, url: str) -> ExtractedContent | None:
+        raise RuntimeError("extractor unavailable")
+
+
+class ThrowingAIProvider(HeuristicAIProvider):
+    async def enrich(
+        self,
+        item: SavedItem,
+        extracted: ExtractedContent | None,
+    ) -> SavedItem:
+        raise RuntimeError("ai unavailable")
 
 
 @pytest.mark.asyncio
@@ -59,6 +73,56 @@ async def test_save_link_survives_extraction_failure(tmp_path) -> None:
     )
 
     assert item.status is Status.NEEDS_TEXT
+    assert repo.get(item.id) == item
+
+
+@pytest.mark.asyncio
+async def test_save_link_persists_needs_text_when_extractor_raises(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=ThrowingExtractor(),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+
+    item = await service.save_link(
+        user_id="telegram:123",
+        url="https://example.com/private",
+    )
+
+    assert item.status is Status.NEEDS_TEXT
+    assert item.status is not Status.PROCESSING
+    assert item.updated_at == FixedClock().now()
+    assert repo.get(item.id) == item
+
+
+@pytest.mark.asyncio
+async def test_save_link_persists_failed_enrichment_when_ai_provider_raises(
+    tmp_path,
+) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(
+            ExtractedContent(
+                title="Provider Failure",
+                text="The provider should not strand processing items.",
+                metadata={},
+            )
+        ),
+        ai_provider=ThrowingAIProvider(),
+        clock=FixedClock(),
+    )
+
+    item = await service.save_link(
+        user_id="telegram:123",
+        url="https://example.com/provider",
+    )
+
+    assert item.status is Status.FAILED_ENRICHMENT
+    assert item.status is not Status.PROCESSING
+    assert item.updated_at == FixedClock().now()
     assert repo.get(item.id) == item
 
 

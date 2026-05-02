@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from kb_agent.core.models import Priority, SavedItem
+from kb_agent.core.models import Priority, SavedItem, Status
 from kb_agent.core.ports import AIProvider, Clock, Extractor, ItemRepository
 from kb_agent.extraction.url_parser import detect_source_type
 
@@ -45,8 +45,28 @@ class KnowledgeService:
             priority=priority,
         )
         self.repository.save(item)
-        extracted = await self.extractor.extract(url)
-        enriched = await self.ai_provider.enrich(item, extracted)
+        try:
+            extracted = await self.extractor.extract(url)
+        except Exception:
+            failed = replace(
+                item,
+                status=Status.NEEDS_TEXT,
+                updated_at=self.clock.now(),
+            )
+            self.repository.save(failed)
+            return failed
+
+        try:
+            enriched = await self.ai_provider.enrich(item, extracted)
+        except Exception:
+            failed = replace(
+                item,
+                status=Status.FAILED_ENRICHMENT,
+                updated_at=self.clock.now(),
+            )
+            self.repository.save(failed)
+            return failed
+
         self.repository.save(enriched)
         return enriched
 
