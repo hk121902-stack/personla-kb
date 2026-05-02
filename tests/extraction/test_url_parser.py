@@ -10,6 +10,7 @@ def test_find_first_url_from_message() -> None:
 
 def test_detects_primary_source_types() -> None:
     assert detect_source_type("https://x.com/user/status/1") is SourceType.X
+    assert detect_source_type("https://twitter.com/user/status/1") is SourceType.X
     assert detect_source_type("https://youtube.com/watch?v=abc") is SourceType.YOUTUBE
     assert detect_source_type("https://youtu.be/abc") is SourceType.YOUTUBE
     assert detect_source_type("https://linkedin.com/posts/demo") is SourceType.LINKEDIN
