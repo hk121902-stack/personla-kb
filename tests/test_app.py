@@ -231,4 +231,3 @@ class LoopCheckingScheduler:
     def shutdown(self, *, wait: bool) -> None:
         self.events.append(("shutdown", wait))
         self.running = False
-
