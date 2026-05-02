@@ -24,18 +24,24 @@ def test_repository_round_trips_saved_item(tmp_path) -> None:
 
 def test_list_by_user_excludes_archived_items_by_default(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
-    active = SavedItem.new(
-        user_id="telegram:123",
-        url="https://example.com/active",
-        source_type=SourceType.WEB,
-        now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+    active = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/active",
+            source_type=SourceType.WEB,
+            now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+        ),
+        id="a-active",
     )
-    archived = SavedItem.new(
-        user_id="telegram:123",
-        url="https://example.com/archive",
-        source_type=SourceType.WEB,
-        now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
-    ).archive(datetime(2026, 5, 4, 9, 0, tzinfo=UTC))
+    archived = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/archive",
+            source_type=SourceType.WEB,
+            now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+        ).archive(datetime(2026, 5, 4, 9, 0, tzinfo=UTC)),
+        id="b-archived",
+    )
 
     repo.save(active)
     repo.save(archived)
