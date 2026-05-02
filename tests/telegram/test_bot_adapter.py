@@ -209,6 +209,29 @@ async def test_handler_archives_item() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handler_replies_when_archive_item_is_missing() -> None:
+    replies = []
+    knowledge = FakeKnowledge()
+
+    async def archive_missing_item(*, user_id, item_id):
+        knowledge.archived = (user_id, item_id)
+        raise ValueError("saved item not found")
+
+    knowledge.archive_item = archive_missing_item
+    handler = TelegramMessageHandler(
+        knowledge=knowledge,
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(user_id="telegram:123", text="archive stale-id", reply=replies.append)
+
+    assert knowledge.archived == ("telegram:123", "stale-id")
+    assert replies == ["I could not find that saved item."]
+
+
+@pytest.mark.asyncio
 async def test_handler_prompts_for_empty_message() -> None:
     replies = []
     handler = TelegramMessageHandler(

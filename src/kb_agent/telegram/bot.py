@@ -34,6 +34,7 @@ _HELP_TEXT = "Send a link to save it, or ask a question about your knowledge bas
 _DIGEST_UNAVAILABLE = "Digest service is not available right now."
 _ARCHIVE_REVIEW_UNAVAILABLE = "Archive review is not available right now."
 _ARCHIVE_MISSING_ID = "Tell me which item to archive, like: archive <item_id>."
+_ARCHIVE_NOT_FOUND = "I could not find that saved item."
 
 
 class TelegramMessageHandler:
@@ -140,9 +141,14 @@ class TelegramMessageHandler:
             await _send(reply, _ARCHIVE_MISSING_ID)
             return
 
-        item = await _maybe_await(
-            self.knowledge.archive_item(user_id=user_id, item_id=command.item_id),
-        )
+        try:
+            item = await _maybe_await(
+                self.knowledge.archive_item(user_id=user_id, item_id=command.item_id),
+            )
+        except ValueError:
+            await _send(reply, _ARCHIVE_NOT_FOUND)
+            return
+
         title = item.title or item.url
         await _send(reply, f"Archived: {title}")
 
