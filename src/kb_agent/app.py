@@ -149,6 +149,7 @@ def install_runtime_lifecycle(runtime: Any) -> None:
     async def post_shutdown(application: Application) -> None:
         if runtime.scheduler is not None and runtime.scheduler.running:
             runtime.scheduler.shutdown(wait=False)
+            await asyncio.sleep(0)
         await _close_http_client(runtime.http_client)
         if previous_post_shutdown is not None:
             await previous_post_shutdown(application)

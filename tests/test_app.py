@@ -1,8 +1,10 @@
 import asyncio
 from types import SimpleNamespace
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
 import kb_agent.app as app_module
-from kb_agent.app import register_digest_jobs
+from kb_agent.app import install_runtime_lifecycle, register_digest_jobs
 from kb_agent.config import Settings
 from kb_agent.core.digests import Digest
 
@@ -122,6 +124,26 @@ def test_main_starts_and_stops_scheduler_from_application_lifecycle(monkeypatch)
     assert scheduler.events == ["start", ("shutdown", False)]
     assert http_client.closed
     assert http_client.close_count == 1
+
+
+async def test_post_shutdown_waits_for_real_scheduler_to_stop() -> None:
+    scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
+    application = FakeApplication()
+    http_client = FakeHttpClient()
+    runtime = SimpleNamespace(
+        scheduler=scheduler,
+        application=application,
+        http_client=http_client,
+    )
+
+    install_runtime_lifecycle(runtime)
+    await application.post_init(application)
+    assert scheduler.running
+
+    await application.post_shutdown(application)
+
+    assert not scheduler.running
+    assert http_client.closed
 
 
 class LoopCheckingScheduler:
