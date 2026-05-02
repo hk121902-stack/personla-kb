@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Mapping
+from contextlib import closing
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
@@ -30,17 +31,19 @@ class SQLiteItemRepository:
             f"ON CONFLICT(id) DO UPDATE SET {updates}"
         )
 
-        with self._connect() as connection:
-            connection.execute(sql, row)
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute(sql, row)
 
         return item
 
     def get(self, item_id: str) -> SavedItem | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM saved_items WHERE id = ?",
-                (item_id,),
-            ).fetchone()
+        with closing(self._connect()) as connection:
+            with connection:
+                row = connection.execute(
+                    "SELECT * FROM saved_items WHERE id = ?",
+                    (item_id,),
+                ).fetchone()
 
         if row is None:
             return None
@@ -53,25 +56,27 @@ class SQLiteItemRepository:
         include_archived: bool = False,
     ) -> list[SavedItem]:
         if include_archived:
-            sql = "SELECT * FROM saved_items WHERE user_id = ? ORDER BY created_at ASC"
+            sql = "SELECT * FROM saved_items WHERE user_id = ? ORDER BY created_at ASC, id ASC"
             parameters = (user_id,)
         else:
             sql = (
                 "SELECT * FROM saved_items "
                 "WHERE user_id = ? AND archived = 0 "
-                "ORDER BY created_at ASC"
+                "ORDER BY created_at ASC, id ASC"
             )
             parameters = (user_id,)
 
-        with self._connect() as connection:
-            rows = connection.execute(sql, parameters).fetchall()
+        with closing(self._connect()) as connection:
+            with connection:
+                rows = connection.execute(sql, parameters).fetchall()
 
         return [self._from_row(row) for row in rows]
 
     def _initialize_schema(self) -> None:
         schema = resources.files("kb_agent.storage").joinpath("schema.sql").read_text()
-        with self._connect() as connection:
-            connection.executescript(schema)
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.executescript(schema)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)
