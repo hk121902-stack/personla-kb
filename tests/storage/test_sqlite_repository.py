@@ -41,3 +41,4 @@ def test_list_by_user_excludes_archived_items_by_default(tmp_path) -> None:
 
     assert repo.list_by_user("telegram:123") == [active]
     assert repo.list_by_user("telegram:123", include_archived=True) == [active, archived]
+    assert repo.list_by_user("telegram:123", True) == [active, archived]

@@ -50,7 +50,6 @@ class SQLiteItemRepository:
     def list_by_user(
         self,
         user_id: str,
-        *,
         include_archived: bool = False,
     ) -> list[SavedItem]:
         if include_archived:
