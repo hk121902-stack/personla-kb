@@ -102,15 +102,14 @@ async def test_save_link_persists_failed_enrichment_when_ai_provider_raises(
     tmp_path,
 ) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    extracted = ExtractedContent(
+        title=" Provider Failure ",
+        text=" The provider should not strand processing items. ",
+        metadata={"status_code": "200"},
+    )
     service = KnowledgeService(
         repository=repo,
-        extractor=StaticExtractor(
-            ExtractedContent(
-                title="Provider Failure",
-                text="The provider should not strand processing items.",
-                metadata={},
-            )
-        ),
+        extractor=StaticExtractor(extracted),
         ai_provider=ThrowingAIProvider(),
         clock=FixedClock(),
     )
@@ -118,10 +117,17 @@ async def test_save_link_persists_failed_enrichment_when_ai_provider_raises(
     item = await service.save_link(
         user_id="telegram:123",
         url="https://example.com/provider",
+        note="keep extracted details",
+        priority=Priority.HIGH,
     )
 
     assert item.status is Status.FAILED_ENRICHMENT
     assert item.status is not Status.PROCESSING
+    assert item.title == extracted.title
+    assert item.extracted_text == extracted.text
+    assert item.source_metadata == extracted.metadata
+    assert item.user_note == "keep extracted details"
+    assert item.priority is Priority.HIGH
     assert item.updated_at == FixedClock().now()
     assert repo.get(item.id) == item
 
@@ -141,6 +147,27 @@ async def test_archive_excludes_item_from_active_list(tmp_path) -> None:
 
     assert archived.archived is True
     assert repo.list_by_user("telegram:123") == []
+
+
+@pytest.mark.asyncio
+async def test_archive_rejects_missing_or_wrong_user_items(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+    item = await service.save_link(
+        user_id="telegram:123",
+        url="https://example.com/archive",
+    )
+
+    with pytest.raises(ValueError, match="Saved item not found"):
+        service.archive_item(user_id="telegram:999", item_id=item.id)
+
+    with pytest.raises(ValueError, match="Saved item not found"):
+        service.archive_item(user_id="telegram:123", item_id="missing")
 
 
 @pytest.mark.asyncio

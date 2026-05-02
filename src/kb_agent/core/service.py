@@ -59,8 +59,19 @@ class KnowledgeService:
         try:
             enriched = await self.ai_provider.enrich(item, extracted)
         except Exception:
+            extracted_title = item.url
+            extracted_text = ""
+            source_metadata = {}
+            if extracted is not None:
+                extracted_title = extracted.title
+                extracted_text = extracted.text
+                source_metadata = dict(extracted.metadata)
+
             failed = replace(
                 item,
+                title=extracted_title,
+                extracted_text=extracted_text,
+                source_metadata=source_metadata,
                 status=Status.FAILED_ENRICHMENT,
                 updated_at=self.clock.now(),
             )
