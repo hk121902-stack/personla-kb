@@ -107,7 +107,7 @@ def test_repository_round_trips_ai_fields(tmp_path) -> None:
         ai_status=AIStatus.READY,
         ai_attempt_count=2,
         ai_last_attempt_at=now,
-        ai_last_error="",
+        ai_last_error="rate limited",
     )
 
     repo.save(item)
@@ -166,9 +166,21 @@ def test_repository_lists_ai_retry_candidates(tmp_path) -> None:
         id="ready",
         ai_status=AIStatus.READY,
     )
+    maxed_attempts = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/maxed",
+            source_type=SourceType.WEB,
+            now=now,
+        ),
+        id="maxed",
+        ai_status=AIStatus.RETRY_PENDING,
+        ai_attempt_count=3,
+    )
     repo.save(ready)
     repo.save(archived)
+    repo.save(maxed_attempts)
     repo.save(retryable)
 
     assert repo.list_ai_retry_candidates(limit=10, max_attempts=3) == [retryable]
-    assert repo.count_ai_retry_pending() == 1
+    assert repo.count_ai_retry_pending() == 2
