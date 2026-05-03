@@ -1,9 +1,17 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
 
 from kb_agent.ai.providers import HeuristicAIProvider
-from kb_agent.core.models import ExtractedContent, Priority, SavedItem, Status
+from kb_agent.core.models import (
+    AIStatus,
+    ExtractedContent,
+    LearningBrief,
+    Priority,
+    SavedItem,
+    Status,
+)
 from kb_agent.core.service import KnowledgeService, SystemClock
 from kb_agent.extraction.extractors import StaticExtractor
 from kb_agent.storage.sqlite import SQLiteItemRepository
@@ -26,6 +34,151 @@ class ThrowingAIProvider(HeuristicAIProvider):
         extracted: ExtractedContent | None,
     ) -> SavedItem:
         raise RuntimeError("ai unavailable")
+
+
+class RecordingAIProvider(HeuristicAIProvider):
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def enrich(
+        self,
+        item: SavedItem,
+        extracted: ExtractedContent | None,
+    ) -> SavedItem:
+        self.calls.append(item.id)
+        return await super().enrich(item, extracted)
+
+
+def _brief_item(item: SavedItem, *, now: datetime) -> SavedItem:
+    brief = LearningBrief(
+        brief_version=1,
+        provider="gemini",
+        model="gemini-2.5-flash-lite",
+        generated_at=now,
+        title="Refreshed Brief",
+        topic="ai",
+        tags=["refresh"],
+        summary="Refreshed summary.",
+        key_takeaways=["Refresh works."],
+        why_it_matters="Model prompts improve.",
+        estimated_time_minutes=5,
+        suggested_next_action="Review the result.",
+    )
+    return replace(
+        item,
+        title=brief.title,
+        topic=brief.topic,
+        tags=list(brief.tags),
+        summary=brief.summary,
+        learning_brief=brief,
+        ai_status=AIStatus.READY,
+        status=Status.READY,
+        updated_at=now,
+    )
+
+
+class BriefAIProvider(HeuristicAIProvider):
+    async def enrich(
+        self,
+        item: SavedItem,
+        extracted: ExtractedContent | None,
+    ) -> SavedItem:
+        return _brief_item(item, now=FixedClock().now())
+
+
+@pytest.mark.asyncio
+async def test_create_link_saves_without_running_extraction_or_ai(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    ai = RecordingAIProvider()
+    service = KnowledgeService(
+        repository=repo,
+        extractor=ThrowingExtractor(),
+        ai_provider=ai,
+        clock=FixedClock(),
+    )
+
+    item = service.create_link(
+        user_id="telegram:123",
+        url="https://example.com/immediate",
+        note="capture now",
+        priority=Priority.HIGH,
+    )
+
+    assert item.status is Status.PROCESSING
+    assert item.ai_status is AIStatus.PENDING
+    assert item.user_note == "capture now"
+    assert ai.calls == []
+    assert repo.get(item.id) == item
+
+
+@pytest.mark.asyncio
+async def test_enrich_saved_item_updates_existing_item(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(ExtractedContent(title="Source", text="Body", metadata={})),
+        ai_provider=BriefAIProvider(),
+        clock=FixedClock(),
+    )
+    item = service.create_link(user_id="telegram:123", url="https://example.com/source")
+
+    enriched = await service.enrich_saved_item(user_id="telegram:123", item_id=item.id)
+
+    assert enriched.id == item.id
+    assert enriched.ai_status is AIStatus.READY
+    assert enriched.learning_brief.title == "Refreshed Brief"
+    assert repo.get(item.id) == enriched
+
+
+@pytest.mark.asyncio
+async def test_refresh_item_accepts_alias(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(ExtractedContent(title="Source", text="Body", metadata={})),
+        ai_provider=BriefAIProvider(),
+        clock=FixedClock(),
+    )
+    item = replace(
+        service.create_link(user_id="telegram:123", url="https://example.com/source"),
+        id="7f3a9b8c1234",
+    )
+    repo.save(item)
+
+    refreshed = await service.refresh_item(user_id="telegram:123", item_ref="kb_7f3a")
+
+    assert refreshed.id == "7f3a9b8c1234"
+    assert refreshed.learning_brief.title == "Refreshed Brief"
+
+
+@pytest.mark.asyncio
+async def test_retry_pending_ai_skips_archived_items_and_caps_attempts(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(ExtractedContent(title="Source", text="Body", metadata={})),
+        ai_provider=BriefAIProvider(),
+        clock=FixedClock(),
+    )
+    retryable = replace(
+        service.create_link(user_id="telegram:123", url="https://example.com/retry"),
+        ai_status=AIStatus.RETRY_PENDING,
+        ai_attempt_count=1,
+    )
+    archived = replace(
+        service.create_link(user_id="telegram:123", url="https://example.com/archive").archive(
+            FixedClock().now(),
+        ),
+        ai_status=AIStatus.RETRY_PENDING,
+    )
+    repo.save(retryable)
+    repo.save(archived)
+
+    results = await service.retry_pending_ai(limit=10, max_attempts=3)
+
+    assert [item.id for item in results] == [retryable.id]
+    assert repo.get(retryable.id).ai_status is AIStatus.READY
+    assert repo.get(archived.id).ai_status is AIStatus.RETRY_PENDING
 
 
 @pytest.mark.asyncio

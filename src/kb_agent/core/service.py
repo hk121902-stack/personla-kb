@@ -44,33 +44,83 @@ class KnowledgeService:
             now=now,
         )
         if item is None:
-            item = SavedItem.new(
+            item = self.create_link(
                 user_id=user_id,
                 url=url,
-                source_type=detect_source_type(url),
-                now=now,
                 note=note,
                 priority=priority,
             )
+        else:
+            self.repository.save(item)
+        return await self.enrich_saved_item(user_id=user_id, item_id=item.id)
+
+    def create_link(
+        self,
+        *,
+        user_id: str,
+        url: str,
+        note: str = "",
+        priority: Priority = Priority.UNSET,
+    ) -> SavedItem:
+        now = self.clock.now()
+        item = SavedItem.new(
+            user_id=user_id,
+            url=url,
+            source_type=detect_source_type(url),
+            now=now,
+            note=note,
+            priority=priority,
+        )
         self.repository.save(item)
+        return item
+
+    def resolve_item_ref(self, *, user_id: str, item_ref: str) -> str:
+        item_id = self.repository.resolve_item_ref(user_id, item_ref)
+        if item_id is None:
+            raise ValueError("Saved item not found")
+        return item_id
+
+    async def enrich_saved_item(self, *, user_id: str, item_id: str) -> SavedItem:
+        item = self._get_user_item(user_id=user_id, item_id=item_id)
+        extracted = await self._extract_for_item(item)
+        return await self._enrich_and_save(item, extracted)
+
+    async def refresh_item(self, *, user_id: str, item_ref: str) -> SavedItem:
+        item_id = self.resolve_item_ref(user_id=user_id, item_ref=item_ref)
+        return await self.enrich_saved_item(user_id=user_id, item_id=item_id)
+
+    async def retry_pending_ai(self, *, limit: int, max_attempts: int) -> list[SavedItem]:
+        results: list[SavedItem] = []
+        for item in self.repository.list_ai_retry_candidates(
+            limit=limit,
+            max_attempts=max_attempts,
+        ):
+            retry_at = self.clock.now()
+            updated = replace(
+                item,
+                ai_last_attempt_at=retry_at,
+                updated_at=retry_at,
+            )
+            self.repository.save(updated)
+            results.append(
+                await self.enrich_saved_item(user_id=item.user_id, item_id=item.id),
+            )
+        return results
+
+    async def _extract_for_item(self, item: SavedItem) -> ExtractedContent | None:
         try:
-            extracted = await self.extractor.extract(url)
+            extracted = await self.extractor.extract(item.url)
         except Exception:
             extracted = _manual_extracted_content(item)
-            if extracted is not None:
-                return await self._enrich_and_save(item, extracted)
-            failed = replace(
-                item,
-                status=Status.NEEDS_TEXT,
-                updated_at=self.clock.now(),
-            )
-            self.repository.save(failed)
-            return failed
-
         if extracted is None:
             extracted = _manual_extracted_content(item)
-
-        return await self._enrich_and_save(item, extracted)
+        if extracted is None and item.extracted_text:
+            extracted = ExtractedContent(
+                title=item.title,
+                text=item.extracted_text,
+                metadata=dict(item.source_metadata),
+            )
+        return extracted
 
     async def _enrich_and_save(
         self,
@@ -103,12 +153,14 @@ class KnowledgeService:
         return enriched
 
     def archive_item(self, *, user_id: str, item_id: str) -> SavedItem:
+        item_id = self.resolve_item_ref(user_id=user_id, item_ref=item_id)
         item = self._get_user_item(user_id=user_id, item_id=item_id)
         archived = item.archive(self.clock.now())
         self.repository.save(archived)
         return archived
 
     def add_note(self, *, user_id: str, item_id: str, note: str) -> SavedItem:
+        item_id = self.resolve_item_ref(user_id=user_id, item_ref=item_id)
         item = self._get_user_item(user_id=user_id, item_id=item_id)
         updated = replace(item, user_note=note, updated_at=self.clock.now())
         self.repository.save(updated)
@@ -121,6 +173,7 @@ class KnowledgeService:
         item_id: str,
         priority: Priority,
     ) -> SavedItem:
+        item_id = self.resolve_item_ref(user_id=user_id, item_ref=item_id)
         item = self._get_user_item(user_id=user_id, item_id=item_id)
         updated = replace(item, priority=priority, updated_at=self.clock.now())
         self.repository.save(updated)
