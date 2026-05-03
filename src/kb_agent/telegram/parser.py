@@ -37,6 +37,21 @@ class DigestCommand:
 
 
 @dataclass(frozen=True)
+class AIStatusCommand:
+    pass
+
+
+@dataclass(frozen=True)
+class RefreshCommand:
+    item_ref: str
+
+
+@dataclass(frozen=True)
+class ModelCommand:
+    provider_model: str
+
+
+@dataclass(frozen=True)
 class ArchiveCommand:
     item_id: str
 
@@ -62,6 +77,9 @@ def parse_message(
     SaveCommand
     | AskCommand
     | DigestCommand
+    | AIStatusCommand
+    | RefreshCommand
+    | ModelCommand
     | ArchiveCommand
     | ReviewArchiveCommand
     | ShowCommand
@@ -86,6 +104,12 @@ def parse_message(
         return DigestCommand(kind="today")
     if lowered == "digest week" or lowered.startswith("digest week "):
         return DigestCommand(kind="week")
+    if lowered == "ai status" or lowered.startswith("ai status "):
+        return AIStatusCommand()
+    if lowered == "refresh" or lowered.startswith("refresh "):
+        return RefreshCommand(item_ref=_after_command(text))
+    if lowered == "model" or lowered.startswith("model "):
+        return ModelCommand(provider_model=_after_command(text))
     if lowered == "review archive" or lowered.startswith("review archive "):
         return ReviewArchiveCommand()
     if lowered == "archive" or lowered.startswith("archive "):

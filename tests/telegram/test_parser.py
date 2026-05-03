@@ -1,9 +1,12 @@
 from kb_agent.core.models import Priority
 from kb_agent.telegram.parser import (
+    AIStatusCommand,
     ArchiveCommand,
     AskCommand,
     DigestCommand,
+    ModelCommand,
     ParseCommand,
+    RefreshCommand,
     ReviewArchiveCommand,
     SaveCommand,
     ShowCommand,
@@ -61,6 +64,24 @@ def test_digest_week_command() -> None:
 
 def test_review_archive_command() -> None:
     assert isinstance(parse_message("review archive"), ReviewArchiveCommand)
+
+
+def test_ai_status_command() -> None:
+    assert isinstance(parse_message("ai status"), AIStatusCommand)
+
+
+def test_refresh_command() -> None:
+    command = parse_message("refresh kb_7f3a")
+
+    assert isinstance(command, RefreshCommand)
+    assert command.item_ref == "kb_7f3a"
+
+
+def test_model_command() -> None:
+    command = parse_message("model gemini:gemini-2.5-flash")
+
+    assert isinstance(command, ModelCommand)
+    assert command.provider_model == "gemini:gemini-2.5-flash"
 
 
 def test_archive_command() -> None:

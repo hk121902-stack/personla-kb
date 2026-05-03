@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
+from kb_agent.core.aliases import alias_for_item_id
 from kb_agent.core.archive_review import ArchiveRecommendation
 from kb_agent.core.models import SavedItem
 
@@ -17,6 +18,7 @@ def format_save_confirmation(item: SavedItem) -> str:
     return "\n".join(
         [
             f"Saved: {title}",
+            f"ID: {alias_for_item_id(item.id)}",
             f"URL: {item.url}",
             f"Tags: {tags}",
             f"Priority: {item.priority.value}",
@@ -61,8 +63,58 @@ def format_archive_recommendations(recommendations: Sequence[ArchiveRecommendati
     for recommendation in recommendations:
         item = recommendation.item
         title = item.title or item.url
-        lines.append(f"- {item.id}: {title} ({recommendation.reason})")
+        lines.append(f"- {alias_for_item_id(item.id)}: {title} ({recommendation.reason})")
     return "\n".join(lines)
+
+
+def format_learning_brief(item: SavedItem) -> str:
+    brief = item.learning_brief
+    if brief is None:
+        return format_save_confirmation(item)
+
+    lines = [
+        f"Learning brief: {brief.title}",
+        f"ID: {alias_for_item_id(item.id)}",
+        "",
+        "Summary:",
+        brief.summary,
+        "",
+        "Key takeaways:",
+    ]
+    lines.extend(f"- {takeaway}" for takeaway in brief.key_takeaways)
+    lines.extend(
+        [
+            "",
+            "Why it matters:",
+            brief.why_it_matters,
+            "",
+            f"Time: {brief.estimated_time_minutes} min",
+            f"Next: {brief.suggested_next_action}",
+        ],
+    )
+    return "\n".join(lines)
+
+
+def format_pending_learning_brief(item: SavedItem) -> str:
+    return "\n".join(
+        [
+            f"Saved: {item.title or item.url}",
+            f"ID: {alias_for_item_id(item.id)}",
+            "Preparing learning brief...",
+        ],
+    )
+
+
+def format_ai_status(status, *, pending_retry_count: int) -> str:
+    last_error = status.last_error or "none"
+    return "\n".join(
+        [
+            "AI status",
+            f"Chain: {' -> '.join(status.chain)}",
+            f"Pending retries: {pending_retry_count}",
+            f"Last error: {last_error}",
+        ],
+    )
 
 
 def _format_text_result(result: TextResult | str) -> str:

@@ -10,18 +10,23 @@ from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 from kb_agent.core.models import Status
 from kb_agent.telegram.formatter import (
+    format_ai_status,
     format_archive_recommendations,
     format_daily_digest,
+    format_learning_brief,
     format_needs_text_prompt,
     format_retrieval_response,
     format_save_confirmation,
     format_weekly_digest,
 )
 from kb_agent.telegram.parser import (
+    AIStatusCommand,
     ArchiveCommand,
     AskCommand,
     DigestCommand,
+    ModelCommand,
     ParseCommand,
+    RefreshCommand,
     ReviewArchiveCommand,
     SaveCommand,
     ShowCommand,
@@ -45,11 +50,13 @@ class TelegramMessageHandler:
         retrieval: Any,
         digest_service: Any | None,
         archive_review_service: Any | None,
+        ai_router: Any | None = None,
     ) -> None:
         self.knowledge = knowledge
         self.retrieval = retrieval
         self.digest_service = digest_service
         self.archive_review_service = archive_review_service
+        self.ai_router = ai_router
 
     async def handle_text(self, *, user_id: str, text: str, reply: Reply) -> None:
         command = parse_message(text)
@@ -86,6 +93,18 @@ class TelegramMessageHandler:
             await self._handle_digest(user_id=user_id, command=command, reply=reply)
             return
 
+        if isinstance(command, AIStatusCommand):
+            await self._handle_ai_status(reply=reply)
+            return
+
+        if isinstance(command, RefreshCommand):
+            await self._handle_refresh(user_id=user_id, command=command, reply=reply)
+            return
+
+        if isinstance(command, ModelCommand):
+            await self._handle_model(command=command, reply=reply)
+            return
+
         if isinstance(command, ReviewArchiveCommand):
             await self._handle_review_archive(user_id=user_id, reply=reply)
             return
@@ -119,6 +138,55 @@ class TelegramMessageHandler:
 
         digest = await _maybe_await(self.digest_service.weekly(user_id=user_id))
         await _send(reply, format_weekly_digest(digest))
+
+    async def _handle_ai_status(self, *, reply: Reply) -> None:
+        if self.ai_router is None:
+            await _send(reply, "AI router is not available right now.")
+            return
+
+        pending_count = 0
+        repository = getattr(self.knowledge, "repository", None)
+        if repository is not None and hasattr(repository, "count_ai_retry_pending"):
+            pending_count = repository.count_ai_retry_pending()
+
+        await _send(
+            reply,
+            format_ai_status(self.ai_router.status(), pending_retry_count=pending_count),
+        )
+
+    async def _handle_refresh(
+        self,
+        *,
+        user_id: str,
+        command: RefreshCommand,
+        reply: Reply,
+    ) -> None:
+        if not command.item_ref:
+            await _send(reply, "Tell me which item to refresh, like: refresh kb_7f3a.")
+            return
+
+        try:
+            item = await _maybe_await(
+                self.knowledge.refresh_item(user_id=user_id, item_ref=command.item_ref),
+            )
+        except ValueError:
+            await _send(reply, "I could not find that saved item.")
+            return
+
+        await _send(reply, format_learning_brief(item))
+
+    async def _handle_model(self, *, command: ModelCommand, reply: Reply) -> None:
+        if self.ai_router is None:
+            await _send(reply, "AI router is not available right now.")
+            return
+
+        try:
+            self.ai_router.select_model(command.provider_model)
+        except ValueError as error:
+            await _send(reply, str(error))
+            return
+
+        await _send(reply, f"Model selected: {command.provider_model}")
 
     async def _handle_review_archive(self, *, user_id: str, reply: Reply) -> None:
         if self.archive_review_service is None:

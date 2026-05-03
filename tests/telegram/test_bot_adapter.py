@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from kb_agent.core.archive_review import ArchiveRecommendation
-from kb_agent.core.models import SavedItem, SourceType, Status
+from kb_agent.core.models import LearningBrief, SavedItem, SourceType, Status
 from kb_agent.telegram.bot import TelegramMessageHandler, _chat_scoped_user_id, build_application
 
 
@@ -23,6 +23,7 @@ def _saved_item(*, title: str = "Saved Title") -> SavedItem:
 class FakeKnowledge:
     def __init__(self) -> None:
         self.archived: tuple[str, str] | None = None
+        self.repository = type("Repository", (), {"count_ai_retry_pending": lambda _: 0})()
 
     async def save_link(self, *, user_id, url, note="", priority=None):
         return _saved_item()
@@ -30,6 +31,21 @@ class FakeKnowledge:
     async def archive_item(self, *, user_id, item_id):
         self.archived = (user_id, item_id)
         return replace(_saved_item(title="Archived Title"), id=item_id, archived=True)
+
+
+class FakeAIRouter:
+    def __init__(self) -> None:
+        self.selected: str | None = None
+
+    def status(self):
+        return type(
+            "Status",
+            (),
+            {"chain": ["gemini:lite", "heuristic:heuristic"], "last_error": ""},
+        )()
+
+    def select_model(self, provider_model: str) -> None:
+        self.selected = provider_model
 
 
 class FakeRetrieval:
@@ -54,7 +70,7 @@ class FakeArchiveReview:
     async def recommend(self, *, user_id, now):
         return [
             ArchiveRecommendation(
-                item=replace(_saved_item(title="Old Link"), id="item123"),
+                item=replace(_saved_item(title="Old Link"), id="7f3a9b8c1234"),
                 reason="old_low_priority",
             ),
         ]
@@ -189,6 +205,7 @@ async def test_handler_prompts_for_note_when_saved_link_needs_text() -> None:
 
     assert replies == [
         "Saved: https://example.com/rag\n"
+        f"ID: kb_{needs_text_item.id[:4]}\n"
         "URL: https://example.com/rag\n"
         "Tags: saved\n"
         "Priority: unset\n"
@@ -264,7 +281,7 @@ async def test_handler_reviews_archive_recommendations() -> None:
 
     await handler.handle_text(user_id="telegram:123", text="review archive", reply=replies.append)
 
-    assert replies == ["Archive recommendations\n- item123: Old Link (old_low_priority)"]
+    assert replies == ["Archive recommendations\n- kb_7f3a: Old Link (old_low_priority)"]
 
 
 @pytest.mark.asyncio
@@ -320,3 +337,79 @@ async def test_handler_prompts_for_empty_message() -> None:
     await handler.handle_text(user_id="telegram:123", text=" ", reply=replies.append)
 
     assert replies == ["Send a link to save it, or ask a question about your knowledge base."]
+
+
+@pytest.mark.asyncio
+async def test_handler_sends_ai_status() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+    )
+
+    await handler.handle_text(user_id="telegram:123", text="ai status", reply=replies.append)
+
+    assert "AI status" in replies[0]
+    assert "gemini:lite -> heuristic:heuristic" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_refreshes_item_by_alias() -> None:
+    replies = []
+    knowledge = FakeKnowledge()
+    brief = LearningBrief(
+        brief_version=1,
+        provider="gemini",
+        model="gemini-2.5-flash-lite",
+        generated_at=datetime(2026, 5, 3, 10, 0, tzinfo=UTC),
+        title="Learning Brief",
+        topic="ai",
+        tags=["brief"],
+        summary="Summary.",
+        key_takeaways=["Takeaway."],
+        why_it_matters="Useful.",
+        estimated_time_minutes=10,
+        suggested_next_action="Review it.",
+    )
+    knowledge.refresh_item = lambda **_: replace(
+        _saved_item(title="Learning Brief"),
+        id="7f3a9b8c1234",
+        learning_brief=brief,
+    )
+    handler = TelegramMessageHandler(
+        knowledge=knowledge,
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+    )
+
+    await handler.handle_text(user_id="telegram:123", text="refresh kb_7f3a", reply=replies.append)
+
+    assert "Learning brief: Learning Brief" in replies[0]
+    assert "ID: kb_7f3a" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_selects_model() -> None:
+    replies = []
+    router = FakeAIRouter()
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=router,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="model gemini:lite",
+        reply=replies.append,
+    )
+
+    assert router.selected == "gemini:lite"
+    assert replies == ["Model selected: gemini:lite"]
