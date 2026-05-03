@@ -87,6 +87,16 @@ class SlowNeedsTextKnowledge(SlowKnowledge):
         )
 
 
+class FastNeedsTextKnowledge(SlowKnowledge):
+    async def enrich_saved_item(self, *, user_id, item_id):
+        return replace(
+            self.created,
+            status=Status.NEEDS_TEXT,
+            ai_status=AIStatus.FAILED,
+            title="https://example.com/rag",
+        )
+
+
 class SlowRetryPendingKnowledge(SlowKnowledge):
     async def enrich_saved_item(self, *, user_id, item_id):
         await asyncio.sleep(0.01)
@@ -360,6 +370,37 @@ async def test_handler_follow_up_prompts_for_note_when_slow_enrichment_needs_tex
 
 
 @pytest.mark.asyncio
+async def test_handler_prompts_for_note_when_fast_split_enrichment_needs_text() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FastNeedsTextKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+        ai_sync_wait_seconds=1,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="https://example.com/rag",
+        reply=replies.append,
+    )
+
+    assert replies == [
+        "Saved: https://example.com/rag\n"
+        "ID: kb_7f3a\n"
+        "URL: https://example.com/rag\n"
+        "Tags: saved\n"
+        "Priority: unset\n"
+        "Status: needs_text",
+        "I saved the link, but could not extract text from: https://example.com/rag\n"
+        "Send the useful text and I will use it as saved content: "
+        "save https://example.com/rag note: <text>",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_handler_follow_up_sends_retry_message_when_slow_enrichment_fails() -> None:
     replies = []
     handler = TelegramMessageHandler(
@@ -617,6 +658,31 @@ async def test_handler_refreshes_item_by_alias() -> None:
 
     assert "Learning brief: Learning Brief" in replies[0]
     assert "ID: kb_7f3a" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_refresh_reports_retry_pending_with_alias() -> None:
+    replies = []
+    knowledge = FakeKnowledge()
+    knowledge.refresh_item = lambda **_: replace(
+        _saved_item(title="Learning Brief"),
+        id="7f3a9b8c1234",
+        status=Status.FAILED_ENRICHMENT,
+        ai_status=AIStatus.RETRY_PENDING,
+    )
+    handler = TelegramMessageHandler(
+        knowledge=knowledge,
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+    )
+
+    await handler.handle_text(user_id="telegram:123", text="refresh kb_7f3a", reply=replies.append)
+
+    assert replies == [
+        "Saved with basic enrichment. AI brief is pending retry.\nID: kb_7f3a",
+    ]
 
 
 @pytest.mark.asyncio

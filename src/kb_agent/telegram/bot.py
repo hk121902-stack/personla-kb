@@ -255,7 +255,7 @@ class TelegramMessageHandler:
             await _send(reply, "I could not find that saved item.")
             return
 
-        await _send(reply, format_learning_brief(item, alias=self._item_alias(item)))
+        await _send_enrichment_result(item, reply, alias=self._item_alias(item))
 
     async def _handle_model(self, *, command: ModelCommand, reply: Reply) -> None:
         if self.ai_router is None:
@@ -410,13 +410,16 @@ async def _send_enrichment_follow_up(
 
 
 async def _send_enrichment_result(item: Any, reply: Reply, *, alias: str | None = None) -> None:
+    if item.status is Status.NEEDS_TEXT:
+        await _send(reply, format_learning_brief(item, alias=alias))
+        await _send(reply, format_needs_text_prompt(item))
+        return
+
     if _needs_enrichment_retry_message(item):
         await _send(reply, format_enrichment_retry_message(item, alias=alias))
         return
 
     await _send(reply, format_learning_brief(item, alias=alias))
-    if item.status is Status.NEEDS_TEXT:
-        await _send(reply, format_needs_text_prompt(item))
 
 
 def _needs_enrichment_retry_message(item: Any) -> bool:
