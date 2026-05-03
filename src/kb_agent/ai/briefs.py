@@ -43,6 +43,14 @@ _REQUIRED_BRIEF_KEYS = (
     "suggested_next_action",
 )
 
+_STRING_BRIEF_KEYS = (
+    "title",
+    "topic",
+    "summary",
+    "why_it_matters",
+    "suggested_next_action",
+)
+
 
 def build_request_context(
     *,
@@ -108,12 +116,45 @@ def validate_learning_brief(
     model: str,
     now: datetime | None = None,
 ) -> LearningBrief:
+    unexpected = [key for key in data if key not in _REQUIRED_BRIEF_KEYS]
+    if unexpected:
+        keys = ", ".join(sorted(unexpected))
+        raise AIProviderError(
+            AIErrorCategory.INVALID_RESPONSE,
+            f"{provider} returned a learning brief with unexpected keys: {keys}",
+        )
+
     missing = [key for key in _REQUIRED_BRIEF_KEYS if key not in data]
     if missing:
         keys = ", ".join(missing)
         raise AIProviderError(
             AIErrorCategory.INVALID_RESPONSE,
             f"{provider} returned a learning brief missing required keys: {keys}",
+        )
+
+    for key in _STRING_BRIEF_KEYS:
+        value = data[key]
+        if not isinstance(value, str) or not value.strip():
+            raise AIProviderError(
+                AIErrorCategory.INVALID_RESPONSE,
+                f"{provider} returned an invalid learning brief field: {key}",
+            )
+
+    tags = _validate_string_list(data["tags"], field_name="tags", provider=provider)
+    key_takeaways = _validate_string_list(
+        data["key_takeaways"],
+        field_name="key_takeaways",
+        provider=provider,
+    )
+
+    estimated_time_minutes = data["estimated_time_minutes"]
+    if not isinstance(estimated_time_minutes, int) or isinstance(
+        estimated_time_minutes,
+        bool,
+    ):
+        raise AIProviderError(
+            AIErrorCategory.INVALID_RESPONSE,
+            f"{provider} returned an invalid learning brief field: estimated_time_minutes",
         )
 
     return LearningBrief(
@@ -123,13 +164,36 @@ def validate_learning_brief(
         generated_at=now or datetime.now(UTC),
         title=str(data["title"]),
         topic=str(data["topic"]),
-        tags=list(data["tags"]),
+        tags=tags,
         summary=str(data["summary"]),
-        key_takeaways=list(data["key_takeaways"]),
+        key_takeaways=key_takeaways,
         why_it_matters=str(data["why_it_matters"]),
-        estimated_time_minutes=int(data["estimated_time_minutes"]),
+        estimated_time_minutes=estimated_time_minutes,
         suggested_next_action=str(data["suggested_next_action"]),
     )
+
+
+def _validate_string_list(value: Any, *, field_name: str, provider: str) -> list[str]:
+    if not isinstance(value, list):
+        raise AIProviderError(
+            AIErrorCategory.INVALID_RESPONSE,
+            f"{provider} returned an invalid learning brief field: {field_name}",
+        )
+
+    if not all(isinstance(item, str) for item in value):
+        raise AIProviderError(
+            AIErrorCategory.INVALID_RESPONSE,
+            f"{provider} returned an invalid learning brief field: {field_name}",
+        )
+
+    valid_items = [item for item in value if item.strip()]
+    if not valid_items:
+        raise AIProviderError(
+            AIErrorCategory.INVALID_RESPONSE,
+            f"{provider} returned an empty learning brief field after validation: {field_name}",
+        )
+
+    return value
 
 
 def sync_brief_to_item(
@@ -157,6 +221,6 @@ def sync_brief_to_item(
         ai_last_error="" if ready else item.ai_last_error,
         extracted_text=extracted_text,
         source_metadata=source_metadata,
-        status=Status.READY if ready else Status.FAILED_ENRICHMENT,
+        status=Status.READY,
         updated_at=now,
     )
