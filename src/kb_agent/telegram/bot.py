@@ -10,7 +10,7 @@ from typing import Any
 from telegram import Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
-from kb_agent.core.models import Status
+from kb_agent.core.models import AIStatus, Status
 from kb_agent.telegram.formatter import (
     format_ai_status,
     format_archive_recommendations,
@@ -43,6 +43,7 @@ _DIGEST_UNAVAILABLE = "Digest service is not available right now."
 _ARCHIVE_REVIEW_UNAVAILABLE = "Archive review is not available right now."
 _ARCHIVE_MISSING_ID = "Tell me which item to archive, like: archive <item_id>."
 _ARCHIVE_NOT_FOUND = "I could not find that saved item."
+_ENRICHMENT_RETRY_MESSAGE = "Saved with basic enrichment. AI brief is pending retry."
 
 
 class TelegramMessageHandler:
@@ -99,9 +100,10 @@ class TelegramMessageHandler:
                         ),
                     )
                     return
-                await _send(reply, format_learning_brief(enriched))
-                if enriched.status is Status.NEEDS_TEXT:
-                    await _send(reply, format_needs_text_prompt(enriched))
+                except Exception:
+                    await _send(reply, _ENRICHMENT_RETRY_MESSAGE)
+                    return
+                await _send_enrichment_result(enriched, reply)
                 return
 
             item = await _maybe_await(
@@ -337,11 +339,31 @@ async def _send(reply: Reply, text: str) -> None:
 
 async def _send_enrichment_follow_up(done: asyncio.Task[Any], reply: Reply) -> None:
     try:
-        item = done.result()
+        try:
+            item = done.result()
+        except Exception:
+            await _send(reply, _ENRICHMENT_RETRY_MESSAGE)
+            return
+        await _send_enrichment_result(item, reply)
     except Exception:
-        await _send(reply, "Saved with basic enrichment. AI brief is pending retry.")
         return
+
+
+async def _send_enrichment_result(item: Any, reply: Reply) -> None:
+    if _needs_enrichment_retry_message(item):
+        await _send(reply, _ENRICHMENT_RETRY_MESSAGE)
+        return
+
     await _send(reply, format_learning_brief(item))
+    if item.status is Status.NEEDS_TEXT:
+        await _send(reply, format_needs_text_prompt(item))
+
+
+def _needs_enrichment_retry_message(item: Any) -> bool:
+    return item.status is Status.FAILED_ENRICHMENT or item.ai_status in {
+        AIStatus.FAILED,
+        AIStatus.RETRY_PENDING,
+    }
 
 
 async def _enrich_saved_item(knowledge: Any, *, user_id: str, item_id: str) -> Any:

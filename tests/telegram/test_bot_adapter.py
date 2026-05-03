@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 
 from kb_agent.core.archive_review import ArchiveRecommendation
-from kb_agent.core.models import LearningBrief, SavedItem, SourceType, Status
+from kb_agent.core.models import AIStatus, LearningBrief, SavedItem, SourceType, Status
 from kb_agent.telegram.bot import TelegramMessageHandler, _chat_scoped_user_id, build_application
 
 
@@ -45,6 +45,31 @@ class SlowKnowledge(FakeKnowledge):
     async def enrich_saved_item(self, *, user_id, item_id):
         await asyncio.sleep(0.01)
         return replace(self.created, title="Finished Brief")
+
+
+class FastFailingEnrichmentKnowledge(SlowKnowledge):
+    async def enrich_saved_item(self, *, user_id, item_id):
+        raise RuntimeError("AI unavailable")
+
+
+class SlowNeedsTextKnowledge(SlowKnowledge):
+    async def enrich_saved_item(self, *, user_id, item_id):
+        await asyncio.sleep(0.01)
+        return replace(
+            self.created,
+            status=Status.NEEDS_TEXT,
+            title="https://example.com/rag",
+        )
+
+
+class SlowRetryPendingKnowledge(SlowKnowledge):
+    async def enrich_saved_item(self, *, user_id, item_id):
+        await asyncio.sleep(0.01)
+        return replace(
+            self.created,
+            status=Status.FAILED_ENRICHMENT,
+            ai_status=AIStatus.RETRY_PENDING,
+        )
 
 
 class FakeAIRouter:
@@ -219,6 +244,87 @@ async def test_handler_replies_pending_then_follow_up_for_slow_save() -> None:
 
     assert replies[0] == "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief..."
     assert "Saved: Finished Brief" in replies[1] or "Learning brief: Finished Brief" in replies[1]
+
+
+@pytest.mark.asyncio
+async def test_handler_sends_retry_message_when_fast_enrichment_raises() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FastFailingEnrichmentKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+        ai_sync_wait_seconds=1,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="https://example.com/rag",
+        reply=replies.append,
+    )
+
+    assert replies == ["Saved with basic enrichment. AI brief is pending retry."]
+
+
+@pytest.mark.asyncio
+async def test_handler_follow_up_prompts_for_note_when_slow_enrichment_needs_text() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=SlowNeedsTextKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+        ai_sync_wait_seconds=0,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="https://example.com/rag",
+        reply=replies.append,
+    )
+    await asyncio.sleep(0.02)
+
+    assert replies[0] == "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief..."
+    assert replies[1] == (
+        "Saved: https://example.com/rag\n"
+        "ID: kb_7f3a\n"
+        "URL: https://example.com/rag\n"
+        "Tags: saved\n"
+        "Priority: unset\n"
+        "Status: needs_text"
+    )
+    assert replies[2] == (
+        "I saved the link, but could not extract text from: https://example.com/rag\n"
+        "Send the useful text and I will use it as saved content: "
+        "save https://example.com/rag note: <text>"
+    )
+
+
+@pytest.mark.asyncio
+async def test_handler_follow_up_sends_retry_message_when_slow_enrichment_fails() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=SlowRetryPendingKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+        ai_sync_wait_seconds=0,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="https://example.com/rag",
+        reply=replies.append,
+    )
+    await asyncio.sleep(0.02)
+
+    assert replies == [
+        "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief...",
+        "Saved with basic enrichment. AI brief is pending retry.",
+    ]
 
 
 @pytest.mark.asyncio
