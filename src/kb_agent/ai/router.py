@@ -126,8 +126,18 @@ class AIProviderRouter:
 
         diagnostic_error = first_real_provider_error or last_error
         self._last_error = diagnostic_error
+        title = item.title
+        extracted_text = item.extracted_text
+        source_metadata = dict(item.source_metadata)
+        if extracted is not None:
+            title = extracted.title.strip() or item.url
+            extracted_text = extracted.text.strip()
+            source_metadata = dict(extracted.metadata)
         return replace(
             item,
+            title=title,
+            extracted_text=extracted_text,
+            source_metadata=source_metadata,
             ai_status=AIStatus.RETRY_PENDING,
             ai_last_error=diagnostic_error,
             status=Status.FAILED_ENRICHMENT,

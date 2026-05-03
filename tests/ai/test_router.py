@@ -5,7 +5,14 @@ import pytest
 
 from kb_agent.ai.briefs import AIErrorCategory, AIProviderError
 from kb_agent.ai.router import AIProviderRouter, BriefProvider, ProviderChainEntry
-from kb_agent.core.models import AIStatus, LearningBrief, SavedItem, SourceType, Status
+from kb_agent.core.models import (
+    AIStatus,
+    ExtractedContent,
+    LearningBrief,
+    SavedItem,
+    SourceType,
+    Status,
+)
 
 
 class FakeProvider(BriefProvider):
@@ -179,6 +186,33 @@ async def test_router_all_providers_fail_stamps_attempt_metadata_and_preserves_r
     assert enriched.status is Status.FAILED_ENRICHMENT
     assert "ollama unavailable" in enriched.ai_last_error
     assert "provider is not configured" not in enriched.ai_last_error
+
+
+@pytest.mark.asyncio
+async def test_router_all_providers_fail_preserves_extracted_content() -> None:
+    first = FakeProvider(
+        "gemini",
+        "lite",
+        AIProviderError(AIErrorCategory.RATE_LIMIT, "rate limited"),
+    )
+    router = AIProviderRouter(
+        [ProviderChainEntry("gemini", "lite")],
+        providers={"gemini:lite": first},
+    )
+    extracted = ExtractedContent(
+        title="Extracted Title",
+        text="Useful extracted source text.",
+        metadata={"content_type": "text/html"},
+    )
+
+    enriched = await router.enrich(_item(), extracted)
+
+    assert enriched.status is Status.FAILED_ENRICHMENT
+    assert enriched.ai_status is AIStatus.RETRY_PENDING
+    assert enriched.title == "Extracted Title"
+    assert enriched.extracted_text == "Useful extracted source text."
+    assert enriched.source_metadata == {"content_type": "text/html"}
+    assert enriched.ai_last_error == "rate limited"
 
 
 def test_provider_chain_entry_parse_preserves_model_colons() -> None:
