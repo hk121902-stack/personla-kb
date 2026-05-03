@@ -520,6 +520,28 @@ async def test_archive_excludes_item_from_active_list(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_archive_item_accepts_alias(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+    item = replace(
+        await service.save_link(user_id="telegram:123", url="https://example.com/old"),
+        id="7f3a9b8c1234",
+    )
+    repo.save(item)
+
+    archived = service.archive_item(user_id="telegram:123", item_id="kb_7f3a")
+
+    assert archived.id == "7f3a9b8c1234"
+    assert archived.archived is True
+    assert repo.get("7f3a9b8c1234") == archived
+
+
+@pytest.mark.asyncio
 async def test_archive_rejects_missing_or_wrong_user_items(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     service = KnowledgeService(
@@ -563,6 +585,32 @@ async def test_add_note_updates_and_persists_item(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_add_note_accepts_alias(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+    item = replace(
+        await service.save_link(user_id="telegram:123", url="https://example.com/note"),
+        id="7f3a9b8c1234",
+    )
+    repo.save(item)
+
+    updated = service.add_note(
+        user_id="telegram:123",
+        item_id="kb_7f3a",
+        note="review before weekly planning",
+    )
+
+    assert updated.id == "7f3a9b8c1234"
+    assert updated.user_note == "review before weekly planning"
+    assert repo.get("7f3a9b8c1234") == updated
+
+
+@pytest.mark.asyncio
 async def test_set_priority_updates_and_persists_item(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     service = KnowledgeService(
@@ -585,6 +633,35 @@ async def test_set_priority_updates_and_persists_item(tmp_path) -> None:
     assert updated.priority is Priority.MEDIUM
     assert updated.updated_at == FixedClock().now()
     assert repo.get(item.id) == updated
+
+
+@pytest.mark.asyncio
+async def test_set_priority_accepts_alias(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+    item = replace(
+        await service.save_link(
+            user_id="telegram:123",
+            url="https://example.com/priority",
+        ),
+        id="7f3a9b8c1234",
+    )
+    repo.save(item)
+
+    updated = service.set_priority(
+        user_id="telegram:123",
+        item_id="kb_7f3a",
+        priority=Priority.MEDIUM,
+    )
+
+    assert updated.id == "7f3a9b8c1234"
+    assert updated.priority is Priority.MEDIUM
+    assert repo.get("7f3a9b8c1234") == updated
 
 
 @pytest.mark.asyncio
