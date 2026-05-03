@@ -62,9 +62,32 @@ def test_context_uses_extended_limit_for_high_priority() -> None:
     assert context["extracted_text"] == "x" * 500
 
 
+def test_context_default_normal_limit_is_4000_chars() -> None:
+    extracted = ExtractedContent(title="Long Post", text="x" * 6_000, metadata={})
+
+    context = build_request_context(item=_item(), extracted=extracted)
+
+    assert context["extracted_text"] == "x" * 4_000
+
+
+def test_context_default_extended_limit_is_12000_chars() -> None:
+    extracted = ExtractedContent(title="Long Post", text="x" * 16_000, metadata={})
+
+    context = build_request_context(item=_item(Priority.HIGH), extracted=extracted)
+
+    assert context["extracted_text"] == "x" * 12_000
+
+
 def test_validate_learning_brief_rejects_missing_keys() -> None:
     with pytest.raises(AIProviderError) as error:
         validate_learning_brief({"title": "Only title"}, provider="gemini", model="model")
+
+    assert error.value.category is AIErrorCategory.INVALID_RESPONSE
+
+
+def test_validate_learning_brief_rejects_non_object_data() -> None:
+    with pytest.raises(AIProviderError) as error:
+        validate_learning_brief(["not", "an", "object"], provider="gemini", model="model")  # type: ignore[arg-type]
 
     assert error.value.category is AIErrorCategory.INVALID_RESPONSE
 
@@ -105,6 +128,14 @@ def _valid_brief_data() -> dict[str, object]:
         pytest.param(
             {**_valid_brief_data(), "estimated_time_minutes": "12"},
             id="time-not-integer",
+        ),
+        pytest.param(
+            {**_valid_brief_data(), "estimated_time_minutes": 0},
+            id="time-zero",
+        ),
+        pytest.param(
+            {**_valid_brief_data(), "estimated_time_minutes": -1},
+            id="time-negative",
         ),
         pytest.param({**_valid_brief_data(), "tags": ["  "]}, id="empty-tags-after-validation"),
         pytest.param(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -56,8 +57,8 @@ def build_request_context(
     *,
     item: SavedItem,
     extracted: ExtractedContent | None,
-    normal_char_limit: int = 12_000,
-    extended_char_limit: int = 40_000,
+    normal_char_limit: int = 4_000,
+    extended_char_limit: int = 12_000,
 ) -> dict[str, Any]:
     title = item.title
     text = item.extracted_text
@@ -110,12 +111,18 @@ def build_enrichment_prompt(context: dict[str, Any]) -> str:
 
 
 def validate_learning_brief(
-    data: dict[str, Any],
+    data: Mapping[str, Any],
     *,
     provider: str,
     model: str,
     now: datetime | None = None,
 ) -> LearningBrief:
+    if not isinstance(data, Mapping):
+        raise AIProviderError(
+            AIErrorCategory.INVALID_RESPONSE,
+            f"{provider} returned a non-object learning brief",
+        )
+
     unexpected = [key for key in data if key not in _REQUIRED_BRIEF_KEYS]
     if unexpected:
         keys = ", ".join(sorted(unexpected))
@@ -151,7 +158,7 @@ def validate_learning_brief(
     if not isinstance(estimated_time_minutes, int) or isinstance(
         estimated_time_minutes,
         bool,
-    ):
+    ) or estimated_time_minutes < 1:
         raise AIProviderError(
             AIErrorCategory.INVALID_RESPONSE,
             f"{provider} returned an invalid learning brief field: estimated_time_minutes",
