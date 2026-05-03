@@ -68,6 +68,10 @@ class TelegramMessageHandler:
         command = parse_message(text)
 
         if isinstance(command, SaveCommand):
+            if command.note.strip():
+                await self._handle_legacy_save(user_id=user_id, command=command, reply=reply)
+                return
+
             if hasattr(self.knowledge, "create_link") and hasattr(
                 self.knowledge,
                 "enrich_saved_item",
@@ -106,17 +110,7 @@ class TelegramMessageHandler:
                 await _send_enrichment_result(enriched, reply)
                 return
 
-            item = await _maybe_await(
-                self.knowledge.save_link(
-                    user_id=user_id,
-                    url=command.url,
-                    note=command.note,
-                    priority=command.priority,
-                ),
-            )
-            await _send(reply, format_save_confirmation(item))
-            if item.status is Status.NEEDS_TEXT:
-                await _send(reply, format_needs_text_prompt(item))
+            await self._handle_legacy_save(user_id=user_id, command=command, reply=reply)
             return
 
         if isinstance(command, AskCommand):
@@ -163,6 +157,25 @@ class TelegramMessageHandler:
 
         if isinstance(command, ParseCommand):
             await _send(reply, _HELP_TEXT)
+
+    async def _handle_legacy_save(
+        self,
+        *,
+        user_id: str,
+        command: SaveCommand,
+        reply: Reply,
+    ) -> None:
+        item = await _maybe_await(
+            self.knowledge.save_link(
+                user_id=user_id,
+                url=command.url,
+                note=command.note,
+                priority=command.priority,
+            ),
+        )
+        await _send(reply, format_save_confirmation(item))
+        if item.status is Status.NEEDS_TEXT:
+            await _send(reply, format_needs_text_prompt(item))
 
     async def _handle_digest(
         self,
@@ -341,6 +354,8 @@ async def _send_enrichment_follow_up(done: asyncio.Task[Any], reply: Reply) -> N
     try:
         try:
             item = done.result()
+        except asyncio.CancelledError:
+            return
         except Exception:
             await _send(reply, _ENRICHMENT_RETRY_MESSAGE)
             return

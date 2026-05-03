@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 
 from kb_agent.core.archive_review import ArchiveRecommendation
-from kb_agent.core.models import AIStatus, LearningBrief, SavedItem, SourceType, Status
+from kb_agent.core.models import AIStatus, LearningBrief, Priority, SavedItem, SourceType, Status
 from kb_agent.telegram.bot import TelegramMessageHandler, _chat_scoped_user_id, build_application
 
 
@@ -44,6 +44,31 @@ class SlowKnowledge(FakeKnowledge):
 
     async def enrich_saved_item(self, *, user_id, item_id):
         await asyncio.sleep(0.01)
+        return replace(self.created, title="Finished Brief")
+
+
+class RecordingSplitKnowledge(FakeKnowledge):
+    def __init__(self) -> None:
+        super().__init__()
+        self.save_link_calls: list[dict[str, object]] = []
+        self.create_link_calls: list[dict[str, object]] = []
+        self.enrich_saved_item_calls: list[dict[str, object]] = []
+        self.created = replace(_saved_item(title="https://example.com/rag"), id="7f3a9b8c1234")
+
+    async def save_link(self, *, user_id, url, note="", priority=None):
+        self.save_link_calls.append(
+            {"user_id": user_id, "url": url, "note": note, "priority": priority},
+        )
+        return _saved_item()
+
+    async def create_link(self, *, user_id, url, note="", priority=None):
+        self.create_link_calls.append(
+            {"user_id": user_id, "url": url, "note": note, "priority": priority},
+        )
+        return self.created
+
+    async def enrich_saved_item(self, *, user_id, item_id):
+        self.enrich_saved_item_calls.append({"user_id": user_id, "item_id": item_id})
         return replace(self.created, title="Finished Brief")
 
 
@@ -220,6 +245,36 @@ async def test_handler_saves_plain_link() -> None:
         reply=replies.append,
     )
 
+    assert "Saved: Saved Title" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_note_save_uses_legacy_save_link_for_split_knowledge() -> None:
+    replies = []
+    knowledge = RecordingSplitKnowledge()
+    handler = TelegramMessageHandler(
+        knowledge=knowledge,
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="save https://example.com/rag note: manual text",
+        reply=replies.append,
+    )
+
+    assert knowledge.save_link_calls == [
+        {
+            "user_id": "telegram:123",
+            "url": "https://example.com/rag",
+            "note": "manual text",
+            "priority": Priority.UNSET,
+        },
+    ]
+    assert knowledge.create_link_calls == []
+    assert knowledge.enrich_saved_item_calls == []
     assert "Saved: Saved Title" in replies[0]
 
 
