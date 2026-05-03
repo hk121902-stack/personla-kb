@@ -7,6 +7,7 @@ from kb_agent.core.models import (
     AIStatus,
     Enrichment,
     ExtractedContent,
+    FrozenList,
     LearningBrief,
     Priority,
     SavedItem,
@@ -53,9 +54,9 @@ def test_learning_brief_is_frozen_and_normalized() -> None:
         generated_at=datetime(2026, 5, 3, 10, 0, tzinfo=UTC),
         title=" Retrieval Guide ",
         topic=" Search ",
-        tags=["RAG", " Search ", "RAG"],
+        tags=["RAG", " ", " Search ", "", "RAG"],
         summary=" How retrieval evaluation works. ",
-        key_takeaways=[" Use recall. ", " Check precision. "],
+        key_takeaways=[" Use recall. ", " ", " Check precision. ", ""],
         why_it_matters=" It improves saved-first answers. ",
         estimated_time_minutes=0,
         suggested_next_action=" Try a small evaluation example. ",
@@ -65,8 +66,10 @@ def test_learning_brief_is_frozen_and_normalized() -> None:
     assert brief.model == "gemini-2.5-flash-lite"
     assert brief.title == "Retrieval Guide"
     assert brief.topic == "Search"
+    assert isinstance(brief.tags, FrozenList)
     assert brief.tags == ["rag", "search"]
     assert brief.summary == "How retrieval evaluation works."
+    assert isinstance(brief.key_takeaways, FrozenList)
     assert brief.key_takeaways == ["Use recall.", "Check precision."]
     assert brief.why_it_matters == "It improves saved-first answers."
     assert brief.estimated_time_minutes == 1
