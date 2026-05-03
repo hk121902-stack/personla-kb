@@ -48,27 +48,34 @@ def test_saved_item_tracks_default_ai_state() -> None:
 def test_learning_brief_is_frozen_and_normalized() -> None:
     brief = LearningBrief(
         brief_version=1,
-        provider="gemini",
-        model="gemini-2.5-flash-lite",
+        provider=" gemini ",
+        model=" gemini-2.5-flash-lite ",
         generated_at=datetime(2026, 5, 3, 10, 0, tzinfo=UTC),
         title=" Retrieval Guide ",
         topic=" Search ",
         tags=["RAG", " Search ", "RAG"],
         summary=" How retrieval evaluation works. ",
         key_takeaways=[" Use recall. ", " Check precision. "],
-        why_it_matters="It improves saved-first answers.",
-        estimated_time_minutes=20,
-        suggested_next_action="Try a small evaluation example.",
+        why_it_matters=" It improves saved-first answers. ",
+        estimated_time_minutes=0,
+        suggested_next_action=" Try a small evaluation example. ",
     )
 
+    assert brief.provider == "gemini"
+    assert brief.model == "gemini-2.5-flash-lite"
     assert brief.title == "Retrieval Guide"
     assert brief.topic == "Search"
     assert brief.tags == ["rag", "search"]
     assert brief.summary == "How retrieval evaluation works."
     assert brief.key_takeaways == ["Use recall.", "Check precision."]
+    assert brief.why_it_matters == "It improves saved-first answers."
+    assert brief.estimated_time_minutes == 1
+    assert brief.suggested_next_action == "Try a small evaluation example."
 
     with pytest.raises(TypeError):
         brief.tags.append("new")
+    with pytest.raises(TypeError):
+        brief.key_takeaways.append("new")
 
 
 def test_saved_item_can_be_archived() -> None:
