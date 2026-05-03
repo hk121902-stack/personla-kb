@@ -24,7 +24,7 @@
 
 ## Phase 2 AI Brief QA
 
-1. Set `KB_AI_PROVIDER_CHAIN=gemini:gemini-2.5-flash-lite,heuristic`.
+1. Set `KB_AI_PROVIDER_CHAIN=gemini:gemini-2.5-flash-lite,gemini:gemini-2.5-flash,heuristic`.
 2. Set `KB_GEMINI_API_KEY`.
 3. Save a link with a note and priority.
 4. Confirm the bot shows an `ID: kb_...` alias.
@@ -32,7 +32,7 @@
 6. Send `ai status` and confirm the provider chain and pending retry count are shown.
 7. Send `model gemini:gemini-2.5-flash` and confirm the bot acknowledges the selection.
 8. Send `refresh <alias>` and confirm a new brief is returned.
-9. Stop Ollama if using it, save another link, and confirm the bot says local AI is unavailable without losing the saved item.
+9. For the Ollama unavailable path, set `KB_AI_PROVIDER_CHAIN=ollama:qwen3:8b,heuristic`, stop Ollama, save another link, confirm the bot keeps the saved item with basic enrichment pending retry, then send `ai status` and confirm the last error reports Ollama as unavailable.
 
 ## Trust Checks
 
