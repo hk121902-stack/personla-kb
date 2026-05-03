@@ -1,4 +1,5 @@
 import socket
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -30,6 +31,76 @@ async def test_webpage_extractor_reads_title_and_text() -> None:
     assert result is not None
     assert result.title == "RAG Notes"
     assert "Hello retrieval" in result.text
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_uses_youtube_oembed_metadata_for_short_links() -> None:
+    seen_request: httpx.Request | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_request
+        seen_request = request
+        return httpx.Response(
+            200,
+            json={
+                "title": "Graphify + Claude Code: The Solution For Big Repos",
+                "author_name": "Software Engineer Meets AI",
+                "provider_name": "YouTube",
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://youtu.be/rgYnZqi2GmA?si=test")
+
+    assert result is not None
+    assert seen_request is not None
+    assert seen_request.headers["host"] == "www.youtube.com"
+    assert seen_request.url.path == "/oembed"
+    assert parse_qs(seen_request.url.query.decode())["url"] == [
+        "https://youtu.be/rgYnZqi2GmA?si=test",
+    ]
+    assert result.title == "Graphify + Claude Code: The Solution For Big Repos"
+    assert "Software Engineer Meets AI" in result.text
+    assert result.metadata["provider_name"] == "YouTube"
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_uses_x_oembed_metadata_for_status_links() -> None:
+    seen_request: httpx.Request | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_request
+        seen_request = request
+        return httpx.Response(
+            200,
+            json={
+                "author_name": "Avid",
+                "provider_name": "Twitter",
+                "html": (
+                    '<blockquote class="twitter-tweet">'
+                    '<p lang="en" dir="ltr">Eric Schmidt says agentic AI companies '
+                    "are a 2026 opportunity.</p>&mdash; Avid (@Av1dlive)"
+                    "</blockquote>"
+                ),
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://x.com/av1dlive/status/2050514348511257026")
+
+    assert result is not None
+    assert seen_request is not None
+    assert seen_request.headers["host"] == "publish.twitter.com"
+    assert seen_request.url.path == "/oembed"
+    assert parse_qs(seen_request.url.query.decode())["url"] == [
+        "https://x.com/av1dlive/status/2050514348511257026",
+    ]
+    assert result.title == "Avid on X"
+    assert "agentic AI companies are a 2026 opportunity" in result.text
+    assert result.metadata["provider_name"] == "Twitter"
+    assert result.metadata["author_name"] == "Avid"
 
 
 @pytest.mark.asyncio

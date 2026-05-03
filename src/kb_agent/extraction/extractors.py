@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import socket
 from dataclasses import dataclass
 from typing import NamedTuple
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -33,6 +34,14 @@ class WebpageExtractor:
     client: httpx.AsyncClient
 
     async def extract(self, url: str) -> ExtractedContent | None:
+        x_metadata = await self._extract_x_metadata(url)
+        if x_metadata is not None:
+            return x_metadata
+
+        youtube_metadata = await self._extract_youtube_metadata(url)
+        if youtube_metadata is not None:
+            return youtube_metadata
+
         target = _safe_fetch_target(url)
         if target is None:
             return None
@@ -67,6 +76,102 @@ class WebpageExtractor:
             title=title,
             text=text,
             metadata={"status_code": str(response.status_code)},
+        )
+
+    async def _extract_youtube_metadata(self, url: str) -> ExtractedContent | None:
+        if not _is_youtube_url(url):
+            return None
+
+        oembed_url = "https://www.youtube.com/oembed?" + urlencode(
+            {"format": "json", "url": url},
+        )
+        target = _safe_fetch_target(oembed_url)
+        if target is None:
+            return None
+
+        try:
+            response = await self.client.get(
+                target.url,
+                headers=target.headers,
+                extensions=target.extensions,
+            )
+        except httpx.HTTPError:
+            return None
+
+        if response.status_code < 200 or response.status_code >= 300:
+            return None
+
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            return None
+
+        title = _string_payload_value(payload, "title")
+        if not title:
+            return None
+
+        author_name = _string_payload_value(payload, "author_name")
+        provider_name = _string_payload_value(payload, "provider_name") or "YouTube"
+        text_parts = [f"YouTube video: {title}"]
+        if author_name:
+            text_parts.append(f"Channel: {author_name}")
+        text_parts.append(f"URL: {url}")
+
+        metadata = {"provider_name": provider_name}
+        if author_name:
+            metadata["author_name"] = author_name
+
+        return ExtractedContent(
+            title=title,
+            text="\n".join(text_parts),
+            metadata=metadata,
+        )
+
+    async def _extract_x_metadata(self, url: str) -> ExtractedContent | None:
+        if not _is_x_url(url):
+            return None
+
+        oembed_url = "https://publish.twitter.com/oembed?" + urlencode(
+            {"omit_script": "1", "url": url},
+        )
+        target = _safe_fetch_target(oembed_url)
+        if target is None:
+            return None
+
+        try:
+            response = await self.client.get(
+                target.url,
+                headers=target.headers,
+                extensions=target.extensions,
+            )
+        except httpx.HTTPError:
+            return None
+
+        if response.status_code < 200 or response.status_code >= 300:
+            return None
+
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            return None
+
+        html = _string_payload_value(payload, "html")
+        text = _html_to_text(html)
+        if not text:
+            return None
+
+        author_name = _string_payload_value(payload, "author_name")
+        provider_name = _string_payload_value(payload, "provider_name") or "Twitter"
+        title = f"{author_name} on X" if author_name else "X post"
+
+        metadata = {"provider_name": provider_name}
+        if author_name:
+            metadata["author_name"] = author_name
+
+        return ExtractedContent(
+            title=title,
+            text=text,
+            metadata=metadata,
         )
 
 
@@ -122,3 +227,29 @@ def _host_header(host: str, port: int | None, scheme: str) -> str:
 
 def _is_safe_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return ip.is_global and not ip.is_multicast
+
+
+def _is_youtube_url(url: str) -> bool:
+    hostname = (urlparse(url).hostname or "").removeprefix("www.").lower()
+    return hostname == "youtube.com" or hostname.endswith(".youtube.com") or hostname == "youtu.be"
+
+
+def _is_x_url(url: str) -> bool:
+    hostname = (urlparse(url).hostname or "").removeprefix("www.").lower()
+    return hostname == "x.com" or hostname.endswith(".x.com") or hostname == "twitter.com"
+
+
+def _string_payload_value(payload: object, key: str) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    value = payload.get(key)
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
+
+
+def _html_to_text(html: str) -> str:
+    if not html.strip():
+        return ""
+    soup = BeautifulSoup(html, "html.parser")
+    return soup.get_text(" ", strip=True)

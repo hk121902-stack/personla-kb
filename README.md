@@ -11,6 +11,8 @@ Telegram-first personal knowledge base agent for saving links, surfacing them la
 - Duplicate/low-value item recommendations for archival review.
 - Search and answer flow that excludes archived items by default.
 - Lightweight SQLite-backed storage and a modular core suitable for future providers.
+- Stable, editable aliases for saved items and AI enrichment metadata persistence.
+- Optional AI enrichment layer with configurable provider chaining (`gemini`, `ollama`, `heuristic`).
 
 ## Quick Start
 
@@ -88,7 +90,10 @@ If source extraction is blocked, the bot keeps the URL and prompts you to add yo
 
 ## Release Notes
 
-See `CHANGELOG.md` for version history. Current release: `v0.0.1`.
+See `CHANGELOG.md` for version history. Current release: `v0.0.2`.
+
+- oEmbed fallback for YouTube and X links now preserves useful summaries when primary extraction is blocked.
+- Stable item aliases and improved AI enrichment command flows improve reliability for Telegram workflows.
 
 ## Development Notes
 
