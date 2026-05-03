@@ -22,6 +22,18 @@
 2. Confirm `KB_TIMEZONE`, `KB_DAILY_DIGEST_HOUR`, `KB_WEEKLY_DIGEST_DAY`, and `KB_WEEKLY_DIGEST_HOUR` match the expected delivery window.
 3. Confirm scheduled digests only include active items from that chat-scoped knowledge base.
 
+## Phase 2 AI Brief QA
+
+1. Set `KB_AI_PROVIDER_CHAIN=gemini:gemini-2.5-flash-lite,heuristic`.
+2. Set `KB_GEMINI_API_KEY`.
+3. Save a link with a note and priority.
+4. Confirm the bot shows an `ID: kb_...` alias.
+5. Confirm the bot returns or follows up with a learning brief.
+6. Send `ai status` and confirm the provider chain and pending retry count are shown.
+7. Send `model gemini:gemini-2.5-flash` and confirm the bot acknowledges the selection.
+8. Send `refresh <alias>` and confirm a new brief is returned.
+9. Stop Ollama if using it, save another link, and confirm the bot says local AI is unavailable without losing the saved item.
+
 ## Trust Checks
 
 - Extraction failure keeps the link saved.

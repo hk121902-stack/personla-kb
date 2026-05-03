@@ -41,6 +41,26 @@ Optional runtime configuration:
 - `KB_AI_SYNC_WAIT_SECONDS`
 - `KB_AI_RETRY_INTERVAL_MINUTES`
 
+## AI Understanding Layer
+
+Phase 2 can enrich saved items with structured AI learning briefs. Configure the provider chain in `.env`:
+
+```dotenv
+KB_AI_PROVIDER_CHAIN=gemini:gemini-2.5-flash-lite,gemini:gemini-2.5-flash,ollama:qwen3:8b,heuristic
+KB_GEMINI_API_KEY=
+KB_OLLAMA_BASE_URL=http://localhost:11434
+KB_OLLAMA_MODEL=qwen3:8b
+```
+
+Gemini is the default cloud path for high-quality brief generation. Ollama keeps enrichment local/private when you have a local model running. The heuristic provider is the final safe fallback so saved items can still be summarized when AI providers are unavailable.
+
+Useful Telegram commands:
+
+- `ai status`
+- `model gemini:gemini-2.5-flash`
+- `model ollama:qwen3:8b`
+- `refresh kb_7f3a`
+
 Run tests:
 
 ```bash

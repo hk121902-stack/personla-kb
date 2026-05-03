@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Structured AI learning briefs with Gemini, Ollama, and heuristic provider fallback.
+- Telegram aliases for saved items.
+- `ai status`, `model`, and `refresh` commands.
+- Retryable AI enrichment state.
+
 ## v0.0.1 - 2026-05-03
 
 ### Added
