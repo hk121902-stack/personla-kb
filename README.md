@@ -33,7 +33,13 @@ Optional runtime configuration:
 - `KB_WEEKLY_DIGEST_DAY`
 - `KB_WEEKLY_DIGEST_HOUR`
 - `KB_TIMEZONE`
-- `KB_AI_PROVIDER` (`heuristic` is currently supported without an external AI key)
+- `KB_AI_PROVIDER_CHAIN` (defaults to Gemini, Ollama, then heuristic fallback)
+- `KB_GEMINI_API_KEY`
+- `KB_GEMINI_MODEL`
+- `KB_OLLAMA_BASE_URL`
+- `KB_OLLAMA_MODEL`
+- `KB_AI_SYNC_WAIT_SECONDS`
+- `KB_AI_RETRY_INTERVAL_MINUTES`
 
 Run tests:
 
