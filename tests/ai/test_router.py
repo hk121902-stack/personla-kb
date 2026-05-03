@@ -9,9 +9,17 @@ from kb_agent.core.models import AIStatus, LearningBrief, SavedItem, SourceType,
 
 
 class FakeProvider(BriefProvider):
-    def __init__(self, name: str, model: str, result: LearningBrief | Exception) -> None:
+    def __init__(
+        self,
+        name: str,
+        model: str,
+        result: LearningBrief | Exception,
+        *,
+        base_url: str = "",
+    ) -> None:
         self.name = name
         self.model = model
+        self.base_url = base_url
         self.result = result
         self.calls = 0
 
@@ -195,3 +203,37 @@ def test_router_updates_runtime_model_only_inside_configured_chain() -> None:
     assert router.status().chain == ["gemini:flash", "gemini:lite"]
     with pytest.raises(ValueError, match="not in configured provider chain"):
         router.select_model("gemini:expensive")
+
+
+def test_router_status_includes_provider_diagnostics() -> None:
+    router = AIProviderRouter(
+        [
+            ProviderChainEntry.parse("gemini:lite"),
+            ProviderChainEntry.parse("gemini:flash"),
+            ProviderChainEntry.parse("ollama:qwen3:8b"),
+            ProviderChainEntry.parse("heuristic"),
+        ],
+        providers={
+            "gemini:lite": FakeProvider("gemini", "lite", _brief("gemini", "lite")),
+            "gemini:flash": FakeProvider("gemini", "flash", _brief("gemini", "flash")),
+            "ollama:qwen3:8b": FakeProvider(
+                "ollama",
+                "qwen3:8b",
+                _brief("ollama", "qwen3:8b"),
+                base_url="http://localhost:11434",
+            ),
+            "heuristic:heuristic": FakeProvider(
+                "heuristic",
+                "heuristic",
+                _brief("heuristic", "heuristic"),
+            ),
+        },
+    )
+
+    router.select_model("gemini:flash")
+    status = router.status()
+
+    assert status.selected_model == "gemini:flash"
+    assert status.gemini_model == "flash"
+    assert status.ollama_base_url == "http://localhost:11434"
+    assert status.ollama_model == "qwen3:8b"

@@ -70,14 +70,22 @@ class KnowledgeService:
         priority: Priority = Priority.UNSET,
     ) -> SavedItem:
         now = self.clock.now()
-        item = SavedItem.new(
+        item = self._pending_manual_fallback_item(
             user_id=user_id,
             url=url,
-            source_type=detect_source_type(url),
-            now=now,
             note=note,
             priority=priority,
+            now=now,
         )
+        if item is None:
+            item = SavedItem.new(
+                user_id=user_id,
+                url=url,
+                source_type=detect_source_type(url),
+                now=now,
+                note=note,
+                priority=priority,
+            )
         self.repository.save(item)
         return item
 

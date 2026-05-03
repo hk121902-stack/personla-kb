@@ -69,10 +69,6 @@ class TelegramMessageHandler:
         command = parse_message(text)
 
         if isinstance(command, SaveCommand):
-            if command.note.strip():
-                await self._handle_legacy_save(user_id=user_id, command=command, reply=reply)
-                return
-
             if hasattr(self.knowledge, "create_link") and hasattr(
                 self.knowledge,
                 "enrich_saved_item",

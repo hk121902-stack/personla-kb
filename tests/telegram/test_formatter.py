@@ -112,6 +112,10 @@ def test_format_ai_status() -> None:
     text = format_ai_status(
         AIStatusSnapshot(
             chain=["gemini:lite", "ollama:qwen3:8b", "heuristic:heuristic"],
+            selected_model="gemini:lite",
+            gemini_model="lite",
+            ollama_base_url="http://localhost:11434",
+            ollama_model="qwen3:8b",
             last_error="Ollama unavailable",
         ),
         pending_retry_count=3,
@@ -119,5 +123,8 @@ def test_format_ai_status() -> None:
 
     assert "AI status" in text
     assert "gemini:lite -> ollama:qwen3:8b -> heuristic:heuristic" in text
+    assert "Selected: gemini:lite" in text
+    assert "Gemini model: lite" in text
+    assert "Ollama: http://localhost:11434 (qwen3:8b)" in text
     assert "Pending retries: 3" in text
     assert "Last error: Ollama unavailable" in text

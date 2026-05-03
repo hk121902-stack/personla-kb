@@ -164,6 +164,35 @@ async def test_create_link_saves_without_running_extraction_or_ai(tmp_path) -> N
 
 
 @pytest.mark.asyncio
+async def test_create_link_with_note_completes_existing_needs_text_item(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+    blocked = await service.save_link(
+        user_id="telegram:123",
+        url="https://linkedin.com/posts/private",
+    )
+
+    captured = service.create_link(
+        user_id="telegram:123",
+        url="https://linkedin.com/posts/private",
+        note="Manual text that should enrich the original item.",
+        priority=Priority.HIGH,
+    )
+
+    assert captured.id == blocked.id
+    assert captured.status is Status.PROCESSING
+    assert captured.ai_status is AIStatus.PENDING
+    assert captured.user_note == "Manual text that should enrich the original item."
+    assert captured.priority is Priority.HIGH
+    assert len(repo.list_by_user("telegram:123")) == 1
+
+
+@pytest.mark.asyncio
 async def test_enrich_saved_item_updates_existing_item(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     service = KnowledgeService(

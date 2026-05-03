@@ -115,7 +115,14 @@ class FakeAIRouter:
         return type(
             "Status",
             (),
-            {"chain": ["gemini:lite", "heuristic:heuristic"], "last_error": ""},
+            {
+                "chain": ["gemini:lite", "heuristic:heuristic"],
+                "selected_model": "gemini:lite",
+                "gemini_model": "lite",
+                "ollama_base_url": "http://localhost:11434",
+                "ollama_model": "qwen3:8b",
+                "last_error": "",
+            },
         )()
 
     def select_model(self, provider_model: str) -> None:
@@ -259,7 +266,7 @@ async def test_handler_saves_plain_link() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handler_note_save_uses_legacy_save_link_for_split_knowledge() -> None:
+async def test_handler_note_save_uses_split_enrichment_for_split_knowledge() -> None:
     replies = []
     knowledge = RecordingSplitKnowledge()
     handler = TelegramMessageHandler(
@@ -275,7 +282,8 @@ async def test_handler_note_save_uses_legacy_save_link_for_split_knowledge() -> 
         reply=replies.append,
     )
 
-    assert knowledge.save_link_calls == [
+    assert knowledge.save_link_calls == []
+    assert knowledge.create_link_calls == [
         {
             "user_id": "telegram:123",
             "url": "https://example.com/rag",
@@ -283,9 +291,10 @@ async def test_handler_note_save_uses_legacy_save_link_for_split_knowledge() -> 
             "priority": Priority.UNSET,
         },
     ]
-    assert knowledge.create_link_calls == []
-    assert knowledge.enrich_saved_item_calls == []
-    assert "Saved: Saved Title" in replies[0]
+    assert knowledge.enrich_saved_item_calls == [
+        {"user_id": "telegram:123", "item_id": "7f3a9b8c1234"},
+    ]
+    assert "Saved: Finished Brief" in replies[0]
 
 
 @pytest.mark.asyncio
@@ -595,6 +604,9 @@ async def test_handler_sends_ai_status() -> None:
 
     assert "AI status" in replies[0]
     assert "gemini:lite -> heuristic:heuristic" in replies[0]
+    assert "Selected: gemini:lite" in replies[0]
+    assert "Gemini model: lite" in replies[0]
+    assert "Ollama: http://localhost:11434 (qwen3:8b)" in replies[0]
 
 
 @pytest.mark.asyncio

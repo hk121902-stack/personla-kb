@@ -130,6 +130,11 @@ def format_ai_status(status, *, pending_retry_count: int) -> str:
         [
             "AI status",
             f"Chain: {' -> '.join(status.chain)}",
+            f"Selected: {getattr(status, 'selected_model', '') or 'none'}",
+            f"Gemini model: {getattr(status, 'gemini_model', '') or 'none'}",
+            "Ollama: "
+            f"{getattr(status, 'ollama_base_url', '') or 'not configured'} "
+            f"({getattr(status, 'ollama_model', '') or 'none'})",
             f"Pending retries: {pending_retry_count}",
             f"Last error: {last_error}",
         ],

@@ -44,6 +44,10 @@ class ProviderChainEntry:
 class AIStatusSnapshot:
     chain: list[str]
     last_error: str
+    selected_model: str = ""
+    gemini_model: str = ""
+    ollama_base_url: str = ""
+    ollama_model: str = ""
 
 
 class AIProviderRouter:
@@ -160,7 +164,42 @@ class AIProviderRouter:
         ]
 
     def status(self) -> AIStatusSnapshot:
+        ollama_entry = _first_entry(self._configured_chain, "ollama")
         return AIStatusSnapshot(
             chain=[entry.key() for entry in self._current_chain],
             last_error=self._last_error,
+            selected_model=self._current_chain[0].key() if self._current_chain else "",
+            gemini_model=_first_model(self._current_chain, "gemini"),
+            ollama_base_url=_provider_attr(
+                self._providers.get(ollama_entry.key()) if ollama_entry is not None else None,
+                "base_url",
+            ),
+            ollama_model=_provider_attr(
+                self._providers.get(ollama_entry.key()) if ollama_entry is not None else None,
+                "model",
+                fallback=ollama_entry.model if ollama_entry is not None else "",
+            ),
         )
+
+
+def _first_entry(
+    entries: Sequence[ProviderChainEntry],
+    provider: str,
+) -> ProviderChainEntry | None:
+    return next((entry for entry in entries if entry.provider == provider), None)
+
+
+def _first_model(entries: Sequence[ProviderChainEntry], provider: str) -> str:
+    entry = _first_entry(entries, provider)
+    if entry is None:
+        return ""
+    return entry.model
+
+
+def _provider_attr(provider: BriefProvider | None, attr: str, *, fallback: str = "") -> str:
+    if provider is None:
+        return fallback
+    value = getattr(provider, attr, fallback)
+    if value is None:
+        return fallback
+    return str(value)
