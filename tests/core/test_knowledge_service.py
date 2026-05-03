@@ -293,6 +293,67 @@ async def test_retry_pending_ai_does_not_double_count_incrementing_provider(
 
 
 @pytest.mark.asyncio
+async def test_retry_pending_ai_skips_needs_text_items_without_manual_content(
+    tmp_path,
+) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    ai = ReadyOnMissingTextAIProvider()
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=ai,
+        clock=FixedClock(),
+    )
+    blocked = await service.save_link(
+        user_id="telegram:123",
+        url="https://linkedin.com/posts/private",
+    )
+
+    results = await service.retry_pending_ai(limit=10, max_attempts=3)
+
+    persisted = repo.get(blocked.id)
+    assert results == []
+    assert ai.calls == []
+    assert persisted is not None
+    assert persisted.status is Status.NEEDS_TEXT
+    assert persisted.ai_status is AIStatus.FAILED
+    assert persisted.ai_attempt_count == 0
+    assert persisted.ai_last_attempt_at is None
+
+
+@pytest.mark.asyncio
+async def test_refresh_item_preserves_existing_extraction_when_extractor_returns_blank(
+    tmp_path,
+) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(ExtractedContent(title="", text="", metadata={})),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+    existing = replace(
+        service.create_link(user_id="telegram:123", url="https://example.com/source"),
+        title="Existing Source",
+        extracted_text="Existing useful source text for retrieval.",
+        source_metadata={"status_code": "200", "content_type": "text/html"},
+        status=Status.READY,
+        ai_status=AIStatus.READY,
+    )
+    repo.save(existing)
+
+    refreshed = await service.refresh_item(user_id="telegram:123", item_ref=existing.id)
+
+    assert refreshed.extracted_text == "Existing useful source text for retrieval."
+    assert refreshed.source_metadata == {
+        "status_code": "200",
+        "content_type": "text/html",
+    }
+    assert refreshed.title == "Existing Source"
+    assert repo.get(existing.id) == refreshed
+
+
+@pytest.mark.asyncio
 async def test_save_link_with_note_and_priority_enriches_item(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     service = KnowledgeService(

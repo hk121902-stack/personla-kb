@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from kb_agent.core.models import ExtractedContent, Priority, SavedItem, Status
+from kb_agent.core.models import AIStatus, ExtractedContent, Priority, SavedItem, Status
 from kb_agent.core.ports import AIProvider, Clock, Extractor, ItemRepository
 from kb_agent.extraction.url_parser import detect_source_type
 
@@ -59,6 +59,7 @@ class KnowledgeService:
                 item,
                 title=item.url,
                 status=Status.NEEDS_TEXT,
+                ai_status=AIStatus.FAILED,
                 updated_at=self.clock.now(),
             )
             self.repository.save(needs_text)
@@ -132,15 +133,18 @@ class KnowledgeService:
         try:
             extracted = await self.extractor.extract(item.url)
         except Exception:
-            extracted = _manual_extracted_content(item)
-        if extracted is None:
-            extracted = _manual_extracted_content(item)
-        if extracted is None and item.extracted_text:
+            extracted = None
+
+        if extracted is not None and not extracted.text.strip():
+            extracted = None
+        if extracted is None and item.extracted_text.strip():
             extracted = ExtractedContent(
                 title=item.title,
                 text=item.extracted_text,
                 metadata=dict(item.source_metadata),
             )
+        if extracted is None:
+            extracted = _manual_extracted_content(item)
         return extracted
 
     async def _enrich_and_save(
@@ -228,6 +232,10 @@ class KnowledgeService:
                     user_note=note,
                     priority=selected_priority,
                     status=Status.PROCESSING,
+                    ai_status=AIStatus.PENDING,
+                    ai_attempt_count=0,
+                    ai_last_attempt_at=None,
+                    ai_last_error="",
                     updated_at=now,
                 )
 
