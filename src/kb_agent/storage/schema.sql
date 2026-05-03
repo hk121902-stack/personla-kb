@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS saved_items (
   ai_attempt_count INTEGER NOT NULL DEFAULT 0,
   ai_last_attempt_at TEXT,
   ai_last_error TEXT NOT NULL DEFAULT '',
+  item_alias TEXT NOT NULL DEFAULT '',
   embedding_json TEXT NOT NULL
 );
 

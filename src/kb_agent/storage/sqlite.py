@@ -92,6 +92,14 @@ class SQLiteItemRepository:
         prefix = ref.removeprefix("kb_")
         with closing(self._connect()) as connection:
             with connection:
+                assigned_rows = connection.execute(
+                    "SELECT id FROM saved_items WHERE user_id = ? AND item_alias = ? "
+                    "ORDER BY created_at ASC, id ASC",
+                    (user_id, ref),
+                ).fetchall()
+                if len(assigned_rows) == 1:
+                    return assigned_rows[0]["id"]
+
                 rows = connection.execute(
                     "SELECT id FROM saved_items WHERE user_id = ? AND lower(id) LIKE ? "
                     "ORDER BY length(id) ASC, id ASC",
@@ -102,19 +110,23 @@ class SQLiteItemRepository:
         return rows[0]["id"]
 
     def item_alias(self, user_id: str, item_id: str) -> str:
-        item = self.get(item_id)
-        if item is None or item.user_id != user_id:
-            return _fallback_alias(item_id)
+        with closing(self._connect()) as connection:
+            with connection:
+                row = connection.execute(
+                    "SELECT id, user_id, item_alias FROM saved_items WHERE id = ?",
+                    (item_id,),
+                ).fetchone()
+                if row is None or row["user_id"] != user_id:
+                    return _fallback_alias(item_id)
+                if row["item_alias"]:
+                    return str(row["item_alias"])
 
-        normalized = item.id.strip().lower()
-        for length in range(4, min(32, len(normalized)) + 1):
-            try:
-                alias = alias_for_item_id(item.id, length=length)
-            except ValueError:
-                return item.id
-            if self.resolve_item_ref(user_id, alias) == item.id:
+                alias = _allocate_item_alias(connection, user_id=user_id, item_id=row["id"])
+                connection.execute(
+                    "UPDATE saved_items SET item_alias = ? WHERE id = ?",
+                    (alias, row["id"]),
+                )
                 return alias
-        return _fallback_alias(item.id)
 
     def list_ai_retry_candidates(self, *, limit: int, max_attempts: int) -> list[SavedItem]:
         with closing(self._connect()) as connection:
@@ -183,6 +195,13 @@ class SQLiteItemRepository:
                     "ai_last_error",
                     "TEXT NOT NULL DEFAULT ''",
                 )
+                _ensure_column(
+                    connection,
+                    "saved_items",
+                    "item_alias",
+                    "TEXT NOT NULL DEFAULT ''",
+                )
+                _ensure_item_aliases(connection)
                 _mark_blocked_ai_rows_non_retryable(connection)
 
     def _connect(self) -> sqlite3.Connection:
@@ -263,6 +282,53 @@ def _ensure_column(
     }
     if column_name not in columns:
         connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def _ensure_item_aliases(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        "SELECT id, user_id FROM saved_items "
+        "WHERE item_alias = '' "
+        "ORDER BY created_at ASC, id ASC",
+    ).fetchall()
+    for row in rows:
+        alias = _allocate_item_alias(connection, user_id=row["user_id"], item_id=row["id"])
+        connection.execute(
+            "UPDATE saved_items SET item_alias = ? WHERE id = ?",
+            (alias, row["id"]),
+        )
+
+
+def _allocate_item_alias(
+    connection: sqlite3.Connection,
+    *,
+    user_id: str,
+    item_id: str,
+) -> str:
+    normalized = item_id.strip().lower()
+    for length in range(4, min(32, len(normalized)) + 1):
+        try:
+            alias = alias_for_item_id(item_id, length=length)
+        except ValueError:
+            return item_id
+
+        assigned = connection.execute(
+            "SELECT id FROM saved_items WHERE user_id = ? AND item_alias = ?",
+            (user_id, alias),
+        ).fetchall()
+        if assigned and any(row["id"] != item_id for row in assigned):
+            continue
+
+        prefix_rows = connection.execute(
+            "SELECT id, item_alias FROM saved_items "
+            "WHERE user_id = ? AND lower(id) LIKE ?",
+            (user_id, f"{alias.removeprefix('kb_')}%"),
+        ).fetchall()
+        if any(row["id"] != item_id for row in prefix_rows):
+            continue
+
+        return alias
+
+    return _fallback_alias(item_id)
 
 
 def _mark_blocked_ai_rows_non_retryable(connection: sqlite3.Connection) -> None:

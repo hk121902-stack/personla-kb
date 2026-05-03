@@ -294,6 +294,39 @@ def test_repository_returns_none_for_ambiguous_short_alias(tmp_path) -> None:
     assert repo.resolve_item_ref("telegram:123", "kb_7f3a") is None
 
 
+def test_repository_preserves_previously_assigned_alias_after_later_collision(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    now = datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
+    first = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/first",
+            source_type=SourceType.WEB,
+            now=now,
+        ),
+        id="7f3a0000aaaa",
+    )
+    repo.save(first)
+
+    assert repo.item_alias("telegram:123", first.id) == "kb_7f3a"
+
+    second = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/second",
+            source_type=SourceType.WEB,
+            now=now,
+        ),
+        id="7f3a1111bbbb",
+    )
+    repo.save(second)
+
+    assert repo.item_alias("telegram:123", first.id) == "kb_7f3a"
+    assert repo.item_alias("telegram:123", second.id) == "kb_7f3a1"
+    assert repo.resolve_item_ref("telegram:123", "kb_7f3a") == first.id
+    assert repo.resolve_item_ref("telegram:123", "kb_7f3a1") == second.id
+
+
 def test_repository_renders_longer_alias_when_short_alias_collides(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     now = datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
