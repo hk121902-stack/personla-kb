@@ -47,6 +47,33 @@ def test_settings_reads_phase_two_ai_config(monkeypatch) -> None:
     assert settings.ai_retry_interval_minutes == 15
 
 
+def test_settings_uses_model_envs_for_default_ai_provider_chain(monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("KB_TELEGRAM_CHAT_ID", "123")
+    monkeypatch.delenv("KB_AI_PROVIDER_CHAIN", raising=False)
+    monkeypatch.delenv("KB_AI_PROVIDER", raising=False)
+    monkeypatch.setenv("KB_GEMINI_MODEL", "gemini-custom-lite")
+    monkeypatch.setenv("KB_OLLAMA_MODEL", "qwen3:14b")
+
+    settings = Settings.from_env()
+
+    assert (
+        settings.ai_provider_chain
+        == "gemini:gemini-custom-lite,gemini:gemini-2.5-flash,ollama:qwen3:14b,heuristic"
+    )
+
+
+def test_settings_uses_legacy_ai_provider_when_chain_is_unset(monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("KB_TELEGRAM_CHAT_ID", "123")
+    monkeypatch.delenv("KB_AI_PROVIDER_CHAIN", raising=False)
+    monkeypatch.setenv("KB_AI_PROVIDER", "heuristic")
+
+    settings = Settings.from_env()
+
+    assert settings.ai_provider_chain == "heuristic"
+
+
 def test_settings_rejects_empty_ai_provider_chain(monkeypatch) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("KB_TELEGRAM_CHAT_ID", "123")
@@ -100,12 +127,22 @@ def test_settings_rejects_non_integer_digest_hour_with_config_error(monkeypatch)
         (
             "KB_AI_RETRY_INTERVAL_MINUTES",
             "later",
-            "KB_AI_RETRY_INTERVAL_MINUTES must be a number",
+            "KB_AI_RETRY_INTERVAL_MINUTES must be an integer",
         ),
         (
             "KB_AI_RETRY_INTERVAL_MINUTES",
             "-5",
-            "KB_AI_RETRY_INTERVAL_MINUTES must be zero or greater",
+            "KB_AI_RETRY_INTERVAL_MINUTES must be 1 or greater",
+        ),
+        (
+            "KB_AI_RETRY_INTERVAL_MINUTES",
+            "0",
+            "KB_AI_RETRY_INTERVAL_MINUTES must be 1 or greater",
+        ),
+        (
+            "KB_AI_RETRY_INTERVAL_MINUTES",
+            "0.5",
+            "KB_AI_RETRY_INTERVAL_MINUTES must be an integer",
         ),
     ],
 )

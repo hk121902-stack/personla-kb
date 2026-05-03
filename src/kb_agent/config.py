@@ -48,9 +48,14 @@ class Settings:
         weekly_digest_day = os.getenv("KB_WEEKLY_DIGEST_DAY", cls.weekly_digest_day).lower()
         if weekly_digest_day not in _VALID_WEEKLY_DAYS:
             raise ValueError("KB_WEEKLY_DIGEST_DAY must be one of mon/tue/wed/thu/fri/sat/sun")
-        ai_provider_chain = os.getenv("KB_AI_PROVIDER_CHAIN", cls.ai_provider_chain)
-        if not ai_provider_chain.strip():
-            raise ValueError("KB_AI_PROVIDER_CHAIN must not be empty")
+        gemini_model = os.getenv("KB_GEMINI_MODEL", cls.gemini_model)
+        ollama_model = os.getenv("KB_OLLAMA_MODEL", cls.ollama_model)
+        ai_provider_chain = _env_ai_provider_chain(
+            _default_ai_provider_chain(
+                gemini_model=gemini_model,
+                ollama_model=ollama_model,
+            ),
+        )
 
         return cls(
             telegram_bot_token=token,
@@ -62,20 +67,38 @@ class Settings:
             weekly_digest_hour=weekly_digest_hour,
             ai_provider_chain=ai_provider_chain,
             gemini_api_key=os.getenv("KB_GEMINI_API_KEY", ""),
-            gemini_model=os.getenv("KB_GEMINI_MODEL", cls.gemini_model),
+            gemini_model=gemini_model,
             ollama_base_url=os.getenv("KB_OLLAMA_BASE_URL", cls.ollama_base_url),
-            ollama_model=os.getenv("KB_OLLAMA_MODEL", cls.ollama_model),
+            ollama_model=ollama_model,
             ai_sync_wait_seconds=_env_float(
                 "KB_AI_SYNC_WAIT_SECONDS",
                 cls.ai_sync_wait_seconds,
             ),
-            ai_retry_interval_minutes=int(
-                _env_float(
-                    "KB_AI_RETRY_INTERVAL_MINUTES",
-                    float(cls.ai_retry_interval_minutes),
-                ),
+            ai_retry_interval_minutes=_env_positive_int(
+                "KB_AI_RETRY_INTERVAL_MINUTES",
+                cls.ai_retry_interval_minutes,
             ),
         )
+
+
+def _default_ai_provider_chain(*, gemini_model: str, ollama_model: str) -> str:
+    return f"gemini:{gemini_model},gemini:gemini-2.5-flash,ollama:{ollama_model},heuristic"
+
+
+def _env_ai_provider_chain(default: str) -> str:
+    name = "KB_AI_PROVIDER_CHAIN"
+    value = os.getenv(name)
+    if value is None:
+        legacy_value = os.getenv("KB_AI_PROVIDER")
+        if legacy_value is not None:
+            name = "KB_AI_PROVIDER"
+            value = legacy_value
+        else:
+            value = default
+
+    if not value.strip():
+        raise ValueError(f"{name} must not be empty")
+    return value.strip()
 
 
 def _optional_env(*names: str) -> str | None:
@@ -109,6 +132,19 @@ def _env_float(name: str, default: float) -> float:
         raise ValueError(f"{name} must be a number") from error
     if parsed < 0:
         raise ValueError(f"{name} must be zero or greater")
+    return parsed
+
+
+def _env_positive_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be an integer") from error
+    if parsed < 1:
+        raise ValueError(f"{name} must be 1 or greater")
     return parsed
 
 
