@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from inspect import isawaitable
+from types import SimpleNamespace
 from typing import Any
 
 from telegram import Update
@@ -147,11 +148,21 @@ class TelegramMessageHandler:
         pending_count = 0
         repository = getattr(self.knowledge, "repository", None)
         if repository is not None and hasattr(repository, "count_ai_retry_pending"):
-            pending_count = repository.count_ai_retry_pending()
+            pending_count = await _maybe_await(repository.count_ai_retry_pending())
+
+        status = await _maybe_await(self.ai_router.status())
+        if (
+            not status.last_error
+            and repository is not None
+            and hasattr(repository, "last_ai_error")
+        ):
+            last_error = await _maybe_await(repository.last_ai_error())
+            if last_error:
+                status = SimpleNamespace(chain=status.chain, last_error=last_error)
 
         await _send(
             reply,
-            format_ai_status(self.ai_router.status(), pending_retry_count=pending_count),
+            format_ai_status(status, pending_retry_count=pending_count),
         )
 
     async def _handle_refresh(
@@ -178,6 +189,10 @@ class TelegramMessageHandler:
     async def _handle_model(self, *, command: ModelCommand, reply: Reply) -> None:
         if self.ai_router is None:
             await _send(reply, "AI router is not available right now.")
+            return
+
+        if not command.provider_model:
+            await _send(reply, "Tell me which model to use, like: model gemini:lite.")
             return
 
         try:

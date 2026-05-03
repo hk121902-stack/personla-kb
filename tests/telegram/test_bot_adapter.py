@@ -357,6 +357,32 @@ async def test_handler_sends_ai_status() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handler_ai_status_uses_persisted_error_when_router_has_no_error() -> None:
+    replies = []
+    knowledge = FakeKnowledge()
+    knowledge.repository = type(
+        "Repository",
+        (),
+        {
+            "count_ai_retry_pending": lambda _: 2,
+            "last_ai_error": lambda _: "gemini failed after retry",
+        },
+    )()
+    handler = TelegramMessageHandler(
+        knowledge=knowledge,
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+    )
+
+    await handler.handle_text(user_id="telegram:123", text="ai status", reply=replies.append)
+
+    assert "Pending retries: 2" in replies[0]
+    assert "Last error: gemini failed after retry" in replies[0]
+
+
+@pytest.mark.asyncio
 async def test_handler_refreshes_item_by_alias() -> None:
     replies = []
     knowledge = FakeKnowledge()
@@ -413,3 +439,25 @@ async def test_handler_selects_model() -> None:
 
     assert router.selected == "gemini:lite"
     assert replies == ["Model selected: gemini:lite"]
+
+
+@pytest.mark.asyncio
+async def test_handler_prompts_for_empty_model_command() -> None:
+    replies = []
+    router = FakeAIRouter()
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=router,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="model",
+        reply=replies.append,
+    )
+
+    assert router.selected is None
+    assert replies == ["Tell me which model to use, like: model gemini:lite."]
