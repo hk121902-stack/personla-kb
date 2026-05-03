@@ -26,9 +26,9 @@
 
 1. Set `KB_AI_PROVIDER_CHAIN=gemini:gemini-2.5-flash-lite,gemini:gemini-2.5-flash,heuristic`.
 2. Set `KB_GEMINI_API_KEY`.
-3. Save a link with a note and priority.
-4. Confirm the bot shows an `ID: kb_...` alias.
-5. Confirm the bot returns or follows up with a learning brief.
+3. Save a link with priority only, such as `save https://example.com priority: high`, so the AI brief path runs.
+4. Confirm the bot shows an `ID: kb_...` alias; optionally save a second link with `note: <text> priority: high` to confirm manual notes still save with an ID.
+5. Confirm the priority-only save returns or follows up with a learning brief.
 6. Send `ai status` and confirm the provider chain and pending retry count are shown.
 7. Send `model gemini:gemini-2.5-flash` and confirm the bot acknowledges the selection.
 8. Send `refresh <alias>` and confirm a new brief is returned.
