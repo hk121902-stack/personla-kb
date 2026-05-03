@@ -4,8 +4,9 @@ import hashlib
 import re
 from collections import Counter
 from dataclasses import replace
+from datetime import UTC, datetime
 
-from kb_agent.core.models import ExtractedContent, SavedItem, Status
+from kb_agent.core.models import ExtractedContent, LearningBrief, SavedItem, Status
 
 _EMBEDDING_SIZE = 32
 _MAX_TAGS = 8
@@ -66,6 +67,33 @@ class HeuristicAIProvider:
             embedding=embedding,
             status=Status.READY,
             source_metadata=dict(extracted.metadata),
+        )
+
+    async def generate_learning_brief(
+        self,
+        item: SavedItem,
+        extracted: ExtractedContent | None,
+    ) -> LearningBrief:
+        title = item.url
+        text = item.user_note
+        if extracted is not None:
+            title = extracted.title.strip() or item.url
+            text = extracted.text.strip() or item.user_note
+        tags = _generate_tags(title, text, item.user_note)
+        summary = _summarize(text) or title
+        return LearningBrief(
+            brief_version=1,
+            provider="heuristic",
+            model="heuristic",
+            generated_at=datetime.now(UTC),
+            title=title,
+            topic=" ".join(tags[:2]) if tags else item.source_type.value,
+            tags=tags,
+            summary=summary,
+            key_takeaways=[summary],
+            why_it_matters=item.user_note or "This item was saved for later review.",
+            estimated_time_minutes=max(1, min(30, len(text.split()) // 180 + 1)),
+            suggested_next_action="Review the source and add a note with the useful details.",
         )
 
     async def synthesize_answer(self, question: str, matches: list[SavedItem]) -> str:
