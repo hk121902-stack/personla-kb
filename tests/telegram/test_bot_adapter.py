@@ -319,7 +319,9 @@ async def test_handler_sends_retry_message_when_fast_enrichment_raises() -> None
         reply=replies.append,
     )
 
-    assert replies == ["Saved with basic enrichment. AI brief is pending retry."]
+    assert replies == [
+        "Saved with basic enrichment. AI brief is pending retry.\nID: kb_7f3a",
+    ]
 
 
 @pytest.mark.asyncio
@@ -378,7 +380,7 @@ async def test_handler_follow_up_sends_retry_message_when_slow_enrichment_fails(
 
     assert replies == [
         "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief...",
-        "Saved with basic enrichment. AI brief is pending retry.",
+        "Saved with basic enrichment. AI brief is pending retry.\nID: kb_7f3a",
     ]
 
 

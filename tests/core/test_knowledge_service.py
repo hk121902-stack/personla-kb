@@ -207,6 +207,27 @@ async def test_enrich_saved_item_passes_extracted_content_to_ai_provider(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_enrich_saved_item_without_text_persists_needs_text_without_ai(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    ai = ReadyOnMissingTextAIProvider()
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=ai,
+        clock=FixedClock(),
+    )
+    item = service.create_link(user_id="telegram:123", url="https://linkedin.com/posts/private")
+
+    enriched = await service.enrich_saved_item(user_id="telegram:123", item_id=item.id)
+
+    assert ai.calls == []
+    assert enriched.status is Status.NEEDS_TEXT
+    assert enriched.ai_status is AIStatus.FAILED
+    assert enriched.title == "https://linkedin.com/posts/private"
+    assert repo.get(item.id) == enriched
+
+
+@pytest.mark.asyncio
 async def test_refresh_item_accepts_alias(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     service = KnowledgeService(

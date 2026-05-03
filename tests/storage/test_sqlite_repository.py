@@ -2,7 +2,7 @@ import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from kb_agent.core.models import AIStatus, LearningBrief, Priority, SavedItem, SourceType
+from kb_agent.core.models import AIStatus, LearningBrief, Priority, SavedItem, SourceType, Status
 from kb_agent.storage.sqlite import SQLiteItemRepository
 
 
@@ -68,6 +68,39 @@ def test_repository_migrates_pre_task_2_saved_items_table(tmp_path) -> None:
                 "[]",
             ),
         )
+        connection.execute(
+            """
+            INSERT INTO saved_items (
+              id, user_id, url, source_type, title, extracted_text, user_note,
+              tags_json, topic, summary, priority, status, archived, archived_at,
+              created_at, updated_at, last_surfaced_at, surface_count,
+              source_metadata_json, embedding_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "blocked-item",
+                "telegram:123",
+                "https://example.com/blocked",
+                "web",
+                "Blocked item",
+                "",
+                "",
+                "[]",
+                "",
+                "",
+                "unset",
+                "needs_text",
+                0,
+                None,
+                "2026-05-03T09:00:00+00:00",
+                "2026-05-03T09:00:00+00:00",
+                None,
+                0,
+                "{}",
+                "[]",
+            ),
+        )
 
     repo = SQLiteItemRepository(db_path)
 
@@ -98,6 +131,12 @@ def test_repository_migrates_pre_task_2_saved_items_table(tmp_path) -> None:
     assert loaded.ai_attempt_count == 0
     assert loaded.ai_last_attempt_at is None
     assert loaded.ai_last_error == ""
+
+    blocked = repo.get("blocked-item")
+    assert blocked is not None
+    assert blocked.status is Status.NEEDS_TEXT
+    assert blocked.ai_status is AIStatus.FAILED
+    assert blocked not in repo.list_ai_retry_candidates(limit=10, max_attempts=3)
 
 
 def test_repository_round_trips_saved_item(tmp_path) -> None:
@@ -255,6 +294,37 @@ def test_repository_returns_none_for_ambiguous_short_alias(tmp_path) -> None:
     assert repo.resolve_item_ref("telegram:123", "kb_7f3a") is None
 
 
+def test_repository_renders_longer_alias_when_short_alias_collides(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    now = datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
+    first = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/first",
+            source_type=SourceType.WEB,
+            now=now,
+        ),
+        id="7f3a0000aaaa",
+    )
+    second = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/second",
+            source_type=SourceType.WEB,
+            now=now,
+        ),
+        id="7f3a1111bbbb",
+    )
+
+    repo.save(first)
+    repo.save(second)
+
+    assert repo.item_alias("telegram:123", first.id) == "kb_7f3a0"
+    assert repo.item_alias("telegram:123", second.id) == "kb_7f3a1"
+    assert repo.resolve_item_ref("telegram:123", "kb_7f3a0") == first.id
+    assert repo.resolve_item_ref("telegram:123", "kb_7f3a1") == second.id
+
+
 def test_repository_lists_ai_retry_candidates(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     now = datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
@@ -372,6 +442,39 @@ def test_repository_lists_ai_retry_candidates(tmp_path) -> None:
     assert ready not in retry_candidates
     assert maxed_attempts not in retry_candidates
     assert repo.count_ai_retry_pending() == 6
+
+
+def test_repository_skips_needs_text_retry_candidates_without_manual_text(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    now = datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
+    blocked = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/blocked",
+            source_type=SourceType.WEB,
+            now=now,
+        ),
+        id="blocked",
+        status=Status.NEEDS_TEXT,
+        ai_status=AIStatus.PENDING,
+    )
+    manual_text = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/manual",
+            source_type=SourceType.WEB,
+            now=now,
+            note="Manual content is enough to retry.",
+        ),
+        id="manual",
+        status=Status.NEEDS_TEXT,
+        ai_status=AIStatus.PENDING,
+    )
+    repo.save(blocked)
+    repo.save(manual_text)
+
+    assert repo.list_ai_retry_candidates(limit=10, max_attempts=3) == [manual_text]
+    assert repo.count_ai_retry_pending() == 1
 
 
 def test_repository_returns_last_ai_error(tmp_path) -> None:

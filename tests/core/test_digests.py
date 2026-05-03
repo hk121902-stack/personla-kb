@@ -43,6 +43,16 @@ def test_daily_digest_selects_up_to_three_active_items(tmp_path) -> None:
     assert "Daily tiny nudge" in digest.text
 
 
+def test_daily_digest_includes_item_aliases(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    saved = replace(item("one", Priority.HIGH, 1), id="7f3a9b8c1234")
+    repo.save(saved)
+
+    digest = DigestService(repo).daily(user_id="telegram:123")
+
+    assert "- kb_7f3a: one - one summary" in digest.text
+
+
 def test_daily_digest_marks_items_surfaced_and_rotates_next_digest(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     for saved in [

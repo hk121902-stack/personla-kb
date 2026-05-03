@@ -9,8 +9,14 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from kb_agent.core.aliases import is_item_alias
+from kb_agent.core.aliases import alias_for_item_id, is_item_alias
 from kb_agent.core.models import AIStatus, LearningBrief, Priority, SavedItem, SourceType, Status
+
+_AI_RETRY_WHERE = (
+    "archived = 0 "
+    "AND ai_status IN ('pending', 'retry_pending') "
+    "AND (status != 'needs_text' OR trim(user_note) != '' OR trim(extracted_text) != '')"
+)
 
 
 class SQLiteItemRepository:
@@ -95,13 +101,27 @@ class SQLiteItemRepository:
             return None
         return rows[0]["id"]
 
+    def item_alias(self, user_id: str, item_id: str) -> str:
+        item = self.get(item_id)
+        if item is None or item.user_id != user_id:
+            return _fallback_alias(item_id)
+
+        normalized = item.id.strip().lower()
+        for length in range(4, min(32, len(normalized)) + 1):
+            try:
+                alias = alias_for_item_id(item.id, length=length)
+            except ValueError:
+                return item.id
+            if self.resolve_item_ref(user_id, alias) == item.id:
+                return alias
+        return _fallback_alias(item.id)
+
     def list_ai_retry_candidates(self, *, limit: int, max_attempts: int) -> list[SavedItem]:
         with closing(self._connect()) as connection:
             with connection:
                 rows = connection.execute(
                     "SELECT * FROM saved_items "
-                    "WHERE archived = 0 "
-                    "AND ai_status IN ('pending', 'retry_pending') "
+                    f"WHERE {_AI_RETRY_WHERE} "
                     "AND ai_attempt_count < ? "
                     "ORDER BY ai_last_attempt_at IS NOT NULL, ai_last_attempt_at ASC, "
                     "created_at ASC, id ASC "
@@ -115,7 +135,7 @@ class SQLiteItemRepository:
             with connection:
                 row = connection.execute(
                     "SELECT COUNT(*) AS count FROM saved_items "
-                    "WHERE archived = 0 AND ai_status IN ('pending', 'retry_pending')",
+                    f"WHERE {_AI_RETRY_WHERE}",
                 ).fetchone()
         return int(row["count"])
 
@@ -163,6 +183,7 @@ class SQLiteItemRepository:
                     "ai_last_error",
                     "TEXT NOT NULL DEFAULT ''",
                 )
+                _mark_blocked_ai_rows_non_retryable(connection)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)
@@ -242,6 +263,26 @@ def _ensure_column(
     }
     if column_name not in columns:
         connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def _mark_blocked_ai_rows_non_retryable(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        UPDATE saved_items
+        SET ai_status = 'failed'
+        WHERE status = 'needs_text'
+          AND trim(user_note) = ''
+          AND trim(extracted_text) = ''
+          AND ai_status IN ('pending', 'retry_pending')
+        """,
+    )
+
+
+def _fallback_alias(item_id: str) -> str:
+    try:
+        return alias_for_item_id(item_id)
+    except ValueError:
+        return item_id
 
 
 def _brief_to_json(brief: LearningBrief | None) -> str:

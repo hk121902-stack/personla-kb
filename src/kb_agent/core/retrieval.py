@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from kb_agent.core.aliases import alias_for_item_id
 from kb_agent.core.models import SavedItem, Status
 from kb_agent.core.ports import AIProvider, ItemRepository
 
@@ -98,7 +99,13 @@ class RetrievalService:
             extra_context = await self.ai_provider.synthesize_extra_context(question)
 
         return RetrievalResponse(
-            text=_format_response(answer, matches, extra_context),
+            text=_format_response(
+                answer,
+                matches,
+                extra_context,
+                repository=self.repository,
+                user_id=user_id,
+            ),
             matches=matches,
         )
 
@@ -144,9 +151,12 @@ def _format_response(
     answer: str,
     matches: list[SavedItem],
     extra_context: str,
+    *,
+    repository: ItemRepository,
+    user_id: str,
 ) -> str:
     sources = "\n".join(
-        f"- {item.title or item.url}: {item.url}"
+        f"- {_item_alias(repository, user_id, item)}: {item.title or item.url} - {item.url}"
         for item in matches
     )
     if not sources:
@@ -163,3 +173,13 @@ def _format_response(
         "Extra context\n"
         f"{extra_context}"
     )
+
+
+def _item_alias(repository: ItemRepository, user_id: str, item: SavedItem) -> str:
+    alias_for_item = getattr(repository, "item_alias", None)
+    if callable(alias_for_item):
+        return alias_for_item(user_id, item.id)
+    try:
+        return alias_for_item_id(item.id)
+    except ValueError:
+        return item.id

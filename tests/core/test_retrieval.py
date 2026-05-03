@@ -28,6 +28,15 @@ def ready_item(url: str, title: str, text: str, *, archived: bool = False) -> Sa
     )
 
 
+def ready_item_with_id(
+    item_id: str,
+    url: str,
+    title: str,
+    text: str,
+) -> SavedItem:
+    return replace(ready_item(url, title, text), id=item_id)
+
+
 @pytest.mark.asyncio
 async def test_retrieval_excludes_archived_by_default(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
@@ -53,6 +62,26 @@ async def test_retrieval_excludes_archived_by_default(tmp_path) -> None:
     assert "From your knowledge base" in response.text
     assert "RAG Search" in response.text
     assert "Old RAG" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_retrieval_sources_include_item_aliases(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    repo.save(
+        ready_item_with_id(
+            "7f3a9b8c1234",
+            "https://example.com/active",
+            "RAG Search",
+            "semantic retrieval notes",
+        ),
+    )
+
+    response = await RetrievalService(repo, HeuristicAIProvider()).answer(
+        user_id="telegram:123",
+        question="What did I save about retrieval?",
+    )
+
+    assert "- kb_7f3a: RAG Search - https://example.com/active" in response.text
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 from kb_agent.core.aliases import alias_for_item_id
@@ -12,13 +12,14 @@ class TextResult(Protocol):
     text: str
 
 
-def format_save_confirmation(item: SavedItem) -> str:
+def format_save_confirmation(item: SavedItem, *, alias: str | None = None) -> str:
     title = item.title or item.url
     tags = ", ".join(item.tags) if item.tags else "none"
+    alias = alias or alias_for_item_id(item.id)
     return "\n".join(
         [
             f"Saved: {title}",
-            f"ID: {alias_for_item_id(item.id)}",
+            f"ID: {alias}",
             f"URL: {item.url}",
             f"Tags: {tags}",
             f"Priority: {item.priority.value}",
@@ -55,7 +56,11 @@ def format_digest(digest: TextResult | str) -> str:
     return _format_text_result(digest)
 
 
-def format_archive_recommendations(recommendations: Sequence[ArchiveRecommendation]) -> str:
+def format_archive_recommendations(
+    recommendations: Sequence[ArchiveRecommendation],
+    *,
+    alias_for_item: Callable[[SavedItem], str | None] | None = None,
+) -> str:
     if not recommendations:
         return "No archive recommendations."
 
@@ -63,18 +68,21 @@ def format_archive_recommendations(recommendations: Sequence[ArchiveRecommendati
     for recommendation in recommendations:
         item = recommendation.item
         title = item.title or item.url
-        lines.append(f"- {alias_for_item_id(item.id)}: {title} ({recommendation.reason})")
+        alias = alias_for_item(item) if alias_for_item is not None else None
+        alias = alias or alias_for_item_id(item.id)
+        lines.append(f"- {alias}: {title} ({recommendation.reason})")
     return "\n".join(lines)
 
 
-def format_learning_brief(item: SavedItem) -> str:
+def format_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:
     brief = item.learning_brief
     if brief is None:
-        return format_save_confirmation(item)
+        return format_save_confirmation(item, alias=alias)
 
+    alias = alias or alias_for_item_id(item.id)
     lines = [
         f"Learning brief: {brief.title}",
-        f"ID: {alias_for_item_id(item.id)}",
+        f"ID: {alias}",
         "",
         "Summary:",
         brief.summary,
@@ -95,12 +103,23 @@ def format_learning_brief(item: SavedItem) -> str:
     return "\n".join(lines)
 
 
-def format_pending_learning_brief(item: SavedItem) -> str:
+def format_pending_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:
+    alias = alias or alias_for_item_id(item.id)
     return "\n".join(
         [
             f"Saved: {item.title or item.url}",
-            f"ID: {alias_for_item_id(item.id)}",
+            f"ID: {alias}",
             "Preparing learning brief...",
+        ],
+    )
+
+
+def format_enrichment_retry_message(item: SavedItem, *, alias: str | None = None) -> str:
+    alias = alias or alias_for_item_id(item.id)
+    return "\n".join(
+        [
+            "Saved with basic enrichment. AI brief is pending retry.",
+            f"ID: {alias}",
         ],
     )
 

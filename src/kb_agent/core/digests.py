@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
+from kb_agent.core.aliases import alias_for_item_id
 from kb_agent.core.models import Priority, SavedItem, Status
 from kb_agent.core.ports import ItemRepository
 
@@ -40,7 +41,7 @@ class DigestService:
         )[:_DAILY_LIMIT]
         items = self._mark_surfaced(items)
         lines = ["Daily tiny nudge"]
-        lines.extend(_item_line(item) for item in items)
+        lines.extend(_item_line(self.repository, user_id, item) for item in items)
         return Digest(text="\n".join(lines), items=items)
 
     def weekly(self, *, user_id: str) -> Digest:
@@ -52,7 +53,7 @@ class DigestService:
         lines = ["Weekly synthesis"]
         for topic, topic_items in _group_by_topic(items).items():
             lines.append(f"{topic}:")
-            lines.extend(_item_line(item) for item in topic_items)
+            lines.extend(_item_line(self.repository, user_id, item) for item in topic_items)
         return Digest(text="\n".join(lines), items=items)
 
     def _mark_surfaced(self, items: list[SavedItem]) -> list[SavedItem]:
@@ -111,6 +112,16 @@ def _group_by_topic(items: list[SavedItem]) -> dict[str, list[SavedItem]]:
     return groups
 
 
-def _item_line(item: SavedItem) -> str:
+def _item_line(repository: ItemRepository, user_id: str, item: SavedItem) -> str:
     summary = item.summary or item.title or item.url
-    return f"- {item.title}: {summary}"
+    return f"- {_item_alias(repository, user_id, item)}: {item.title} - {summary}"
+
+
+def _item_alias(repository: ItemRepository, user_id: str, item: SavedItem) -> str:
+    alias_for_item = getattr(repository, "item_alias", None)
+    if callable(alias_for_item):
+        return alias_for_item(user_id, item.id)
+    try:
+        return alias_for_item_id(item.id)
+    except ValueError:
+        return item.id

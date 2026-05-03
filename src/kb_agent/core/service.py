@@ -55,13 +55,7 @@ class KnowledgeService:
 
         extracted = await self._extract_for_item(item)
         if extracted is None:
-            needs_text = replace(
-                item,
-                title=item.url,
-                status=Status.NEEDS_TEXT,
-                ai_status=AIStatus.FAILED,
-                updated_at=self.clock.now(),
-            )
+            needs_text = self._needs_text_item(item)
             self.repository.save(needs_text)
             return needs_text
 
@@ -96,6 +90,10 @@ class KnowledgeService:
     async def enrich_saved_item(self, *, user_id: str, item_id: str) -> SavedItem:
         item = self._get_user_item(user_id=user_id, item_id=item_id)
         extracted = await self._extract_for_item(item)
+        if extracted is None:
+            needs_text = self._needs_text_item(item)
+            self.repository.save(needs_text)
+            return needs_text
         return await self._enrich_and_save(item, extracted)
 
     async def refresh_item(self, *, user_id: str, item_ref: str) -> SavedItem:
@@ -176,6 +174,15 @@ class KnowledgeService:
 
         self.repository.save(enriched)
         return enriched
+
+    def _needs_text_item(self, item: SavedItem) -> SavedItem:
+        return replace(
+            item,
+            title=item.url,
+            status=Status.NEEDS_TEXT,
+            ai_status=AIStatus.FAILED,
+            updated_at=self.clock.now(),
+        )
 
     def archive_item(self, *, user_id: str, item_id: str) -> SavedItem:
         item_id = self.resolve_item_ref(user_id=user_id, item_ref=item_id)

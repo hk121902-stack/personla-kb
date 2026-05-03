@@ -5,6 +5,7 @@ from kb_agent.ai.router import AIStatusSnapshot
 from kb_agent.core.models import AIStatus, LearningBrief, Priority, SavedItem, SourceType, Status
 from kb_agent.telegram.formatter import (
     format_ai_status,
+    format_enrichment_retry_message,
     format_learning_brief,
     format_needs_text_prompt,
     format_pending_learning_brief,
@@ -98,6 +99,12 @@ def test_format_learning_brief_includes_alias_and_fields() -> None:
 def test_format_pending_learning_brief_includes_alias() -> None:
     assert format_pending_learning_brief(_item()) == (
         "Saved: Learning Brief\nID: kb_7f3a\nPreparing learning brief..."
+    )
+
+
+def test_format_enrichment_retry_message_includes_alias() -> None:
+    assert format_enrichment_retry_message(_item()) == (
+        "Saved with basic enrichment. AI brief is pending retry.\nID: kb_7f3a"
     )
 
 

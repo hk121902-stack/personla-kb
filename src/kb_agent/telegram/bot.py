@@ -15,6 +15,7 @@ from kb_agent.telegram.formatter import (
     format_ai_status,
     format_archive_recommendations,
     format_daily_digest,
+    format_enrichment_retry_message,
     format_learning_brief,
     format_needs_text_prompt,
     format_pending_learning_brief,
@@ -97,17 +98,31 @@ class TelegramMessageHandler:
                         timeout=self.ai_sync_wait_seconds,
                     )
                 except TimeoutError:
-                    await _send(reply, format_pending_learning_brief(item))
+                    alias = self._item_alias(item)
+                    await _send(reply, format_pending_learning_brief(item, alias=alias))
                     task.add_done_callback(
                         lambda done: asyncio.create_task(
-                            _send_enrichment_follow_up(done, reply),
+                            _send_enrichment_follow_up(
+                                done,
+                                reply,
+                                fallback_item=item,
+                                fallback_alias=alias,
+                                alias_for_item=self._item_alias,
+                            ),
                         ),
                     )
                     return
                 except Exception:
-                    await _send(reply, _ENRICHMENT_RETRY_MESSAGE)
+                    await _send(
+                        reply,
+                        format_enrichment_retry_message(item, alias=self._item_alias(item)),
+                    )
                     return
-                await _send_enrichment_result(enriched, reply)
+                await _send_enrichment_result(
+                    enriched,
+                    reply,
+                    alias=self._item_alias(enriched),
+                )
                 return
 
             await self._handle_legacy_save(user_id=user_id, command=command, reply=reply)
@@ -173,7 +188,7 @@ class TelegramMessageHandler:
                 priority=command.priority,
             ),
         )
-        await _send(reply, format_save_confirmation(item))
+        await _send(reply, format_save_confirmation(item, alias=self._item_alias(item)))
         if item.status is Status.NEEDS_TEXT:
             await _send(reply, format_needs_text_prompt(item))
 
@@ -240,7 +255,7 @@ class TelegramMessageHandler:
             await _send(reply, "I could not find that saved item.")
             return
 
-        await _send(reply, format_learning_brief(item))
+        await _send(reply, format_learning_brief(item, alias=self._item_alias(item)))
 
     async def _handle_model(self, *, command: ModelCommand, reply: Reply) -> None:
         if self.ai_router is None:
@@ -267,7 +282,13 @@ class TelegramMessageHandler:
         recommendations = await _maybe_await(
             self.archive_review_service.recommend(user_id=user_id, now=datetime.now(UTC)),
         )
-        await _send(reply, format_archive_recommendations(recommendations))
+        await _send(
+            reply,
+            format_archive_recommendations(
+                recommendations,
+                alias_for_item=self._item_alias,
+            ),
+        )
 
     async def _handle_archive(
         self,
@@ -311,6 +332,13 @@ class TelegramMessageHandler:
         )
         await _send(reply, format_retrieval_response(response))
 
+    def _item_alias(self, item: Any) -> str | None:
+        repository = getattr(self.knowledge, "repository", None)
+        alias_for_item = getattr(repository, "item_alias", None)
+        if callable(alias_for_item):
+            return alias_for_item(item.user_id, item.id)
+        return None
+
 
 def build_application(
     handler: TelegramMessageHandler,
@@ -350,26 +378,43 @@ async def _send(reply: Reply, text: str) -> None:
     await _maybe_await(reply(text))
 
 
-async def _send_enrichment_follow_up(done: asyncio.Task[Any], reply: Reply) -> None:
+async def _send_enrichment_follow_up(
+    done: asyncio.Task[Any],
+    reply: Reply,
+    *,
+    fallback_item: Any | None = None,
+    fallback_alias: str | None = None,
+    alias_for_item: Callable[[Any], str | None] | None = None,
+) -> None:
     try:
         try:
             item = done.result()
         except asyncio.CancelledError:
             return
         except Exception:
-            await _send(reply, _ENRICHMENT_RETRY_MESSAGE)
+            if fallback_item is None:
+                await _send(reply, _ENRICHMENT_RETRY_MESSAGE)
+            else:
+                await _send(
+                    reply,
+                    format_enrichment_retry_message(
+                        fallback_item,
+                        alias=fallback_alias,
+                    ),
+                )
             return
-        await _send_enrichment_result(item, reply)
+        alias = alias_for_item(item) if alias_for_item is not None else fallback_alias
+        await _send_enrichment_result(item, reply, alias=alias)
     except Exception:
         return
 
 
-async def _send_enrichment_result(item: Any, reply: Reply) -> None:
+async def _send_enrichment_result(item: Any, reply: Reply, *, alias: str | None = None) -> None:
     if _needs_enrichment_retry_message(item):
-        await _send(reply, _ENRICHMENT_RETRY_MESSAGE)
+        await _send(reply, format_enrichment_retry_message(item, alias=alias))
         return
 
-    await _send(reply, format_learning_brief(item))
+    await _send(reply, format_learning_brief(item, alias=alias))
     if item.status is Status.NEEDS_TEXT:
         await _send(reply, format_needs_text_prompt(item))
 
