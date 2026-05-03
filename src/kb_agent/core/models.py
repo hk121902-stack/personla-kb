@@ -59,6 +59,13 @@ class Status(StrEnum):
     FAILED_ENRICHMENT = "failed_enrichment"
 
 
+class AIStatus(StrEnum):
+    PENDING = "pending"
+    READY = "ready"
+    RETRY_PENDING = "retry_pending"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True)
 class ExtractedContent:
     title: str
@@ -83,6 +90,46 @@ class Enrichment:
 
 
 @dataclass(frozen=True)
+class LearningBrief:
+    brief_version: int
+    provider: str
+    model: str
+    generated_at: datetime
+    title: str
+    topic: str
+    tags: list[str]
+    summary: str
+    key_takeaways: list[str]
+    why_it_matters: str
+    estimated_time_minutes: int
+    suggested_next_action: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "provider", self.provider.strip())
+        object.__setattr__(self, "model", self.model.strip())
+        object.__setattr__(self, "title", self.title.strip())
+        object.__setattr__(self, "topic", self.topic.strip())
+        object.__setattr__(self, "summary", self.summary.strip())
+        object.__setattr__(
+            self,
+            "tags",
+            FrozenList(dict.fromkeys(tag.strip().lower() for tag in self.tags if tag.strip())),
+        )
+        object.__setattr__(
+            self,
+            "key_takeaways",
+            FrozenList(takeaway.strip() for takeaway in self.key_takeaways if takeaway.strip()),
+        )
+        object.__setattr__(self, "why_it_matters", self.why_it_matters.strip())
+        object.__setattr__(
+            self,
+            "estimated_time_minutes",
+            max(1, int(self.estimated_time_minutes)),
+        )
+        object.__setattr__(self, "suggested_next_action", self.suggested_next_action.strip())
+
+
+@dataclass(frozen=True)
 class SavedItem:
     id: str
     user_id: str
@@ -104,6 +151,11 @@ class SavedItem:
     surface_count: int
     source_metadata: dict[str, str]
     embedding: list[float]
+    learning_brief: LearningBrief | None
+    ai_status: AIStatus
+    ai_attempt_count: int
+    ai_last_attempt_at: datetime | None
+    ai_last_error: str
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tags", FrozenList(self.tags))
@@ -142,6 +194,11 @@ class SavedItem:
             surface_count=0,
             source_metadata={},
             embedding=[],
+            learning_brief=None,
+            ai_status=AIStatus.PENDING,
+            ai_attempt_count=0,
+            ai_last_attempt_at=None,
+            ai_last_error="",
         )
 
     def archive(self, now: datetime) -> SavedItem:

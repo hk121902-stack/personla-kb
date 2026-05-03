@@ -4,8 +4,10 @@ from datetime import UTC, datetime
 import pytest
 
 from kb_agent.core.models import (
+    AIStatus,
     Enrichment,
     ExtractedContent,
+    LearningBrief,
     Priority,
     SavedItem,
     SourceType,
@@ -26,6 +28,47 @@ def test_saved_item_defaults_to_active_processing_item() -> None:
     assert item.status is Status.PROCESSING
     assert item.archived is False
     assert item.created_at == datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
+
+
+def test_saved_item_tracks_default_ai_state() -> None:
+    item = SavedItem.new(
+        user_id="telegram:123",
+        url="https://example.com/ai",
+        source_type=SourceType.WEB,
+        now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+    )
+
+    assert item.ai_status is AIStatus.PENDING
+    assert item.ai_attempt_count == 0
+    assert item.ai_last_attempt_at is None
+    assert item.ai_last_error == ""
+    assert item.learning_brief is None
+
+
+def test_learning_brief_is_frozen_and_normalized() -> None:
+    brief = LearningBrief(
+        brief_version=1,
+        provider="gemini",
+        model="gemini-2.5-flash-lite",
+        generated_at=datetime(2026, 5, 3, 10, 0, tzinfo=UTC),
+        title=" Retrieval Guide ",
+        topic=" Search ",
+        tags=["RAG", " Search ", "RAG"],
+        summary=" How retrieval evaluation works. ",
+        key_takeaways=[" Use recall. ", " Check precision. "],
+        why_it_matters="It improves saved-first answers.",
+        estimated_time_minutes=20,
+        suggested_next_action="Try a small evaluation example.",
+    )
+
+    assert brief.title == "Retrieval Guide"
+    assert brief.topic == "Search"
+    assert brief.tags == ["rag", "search"]
+    assert brief.summary == "How retrieval evaluation works."
+    assert brief.key_takeaways == ["Use recall.", "Check precision."]
+
+    with pytest.raises(TypeError):
+        brief.tags.append("new")
 
 
 def test_saved_item_can_be_archived() -> None:
