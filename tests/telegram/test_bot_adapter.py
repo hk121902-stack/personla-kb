@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -31,6 +32,19 @@ class FakeKnowledge:
     async def archive_item(self, *, user_id, item_id):
         self.archived = (user_id, item_id)
         return replace(_saved_item(title="Archived Title"), id=item_id, archived=True)
+
+
+class SlowKnowledge(FakeKnowledge):
+    def __init__(self) -> None:
+        super().__init__()
+        self.created = replace(_saved_item(title="https://example.com/rag"), id="7f3a9b8c1234")
+
+    def create_link(self, *, user_id, url, note="", priority=None):
+        return self.created
+
+    async def enrich_saved_item(self, *, user_id, item_id):
+        await asyncio.sleep(0.01)
+        return replace(self.created, title="Finished Brief")
 
 
 class FakeAIRouter:
@@ -182,6 +196,29 @@ async def test_handler_saves_plain_link() -> None:
     )
 
     assert "Saved: Saved Title" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_replies_pending_then_follow_up_for_slow_save() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=SlowKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+        ai_sync_wait_seconds=0,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="https://example.com/rag",
+        reply=replies.append,
+    )
+    await asyncio.sleep(0.02)
+
+    assert replies[0] == "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief..."
+    assert "Saved: Finished Brief" in replies[1] or "Learning brief: Finished Brief" in replies[1]
 
 
 @pytest.mark.asyncio

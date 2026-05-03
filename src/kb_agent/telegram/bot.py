@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from inspect import isawaitable
@@ -16,6 +17,7 @@ from kb_agent.telegram.formatter import (
     format_daily_digest,
     format_learning_brief,
     format_needs_text_prompt,
+    format_pending_learning_brief,
     format_retrieval_response,
     format_save_confirmation,
     format_weekly_digest,
@@ -52,17 +54,56 @@ class TelegramMessageHandler:
         digest_service: Any | None,
         archive_review_service: Any | None,
         ai_router: Any | None = None,
+        ai_sync_wait_seconds: float = 6.0,
     ) -> None:
         self.knowledge = knowledge
         self.retrieval = retrieval
         self.digest_service = digest_service
         self.archive_review_service = archive_review_service
         self.ai_router = ai_router
+        self.ai_sync_wait_seconds = ai_sync_wait_seconds
 
     async def handle_text(self, *, user_id: str, text: str, reply: Reply) -> None:
         command = parse_message(text)
 
         if isinstance(command, SaveCommand):
+            if hasattr(self.knowledge, "create_link") and hasattr(
+                self.knowledge,
+                "enrich_saved_item",
+            ):
+                item = await _maybe_await(
+                    self.knowledge.create_link(
+                        user_id=user_id,
+                        url=command.url,
+                        note=command.note,
+                        priority=command.priority,
+                    ),
+                )
+                task = asyncio.create_task(
+                    _enrich_saved_item(
+                        self.knowledge,
+                        user_id=user_id,
+                        item_id=item.id,
+                    ),
+                )
+                try:
+                    enriched = await asyncio.wait_for(
+                        asyncio.shield(task),
+                        timeout=self.ai_sync_wait_seconds,
+                    )
+                except TimeoutError:
+                    await _send(reply, format_pending_learning_brief(item))
+                    task.add_done_callback(
+                        lambda done: asyncio.create_task(
+                            _send_enrichment_follow_up(done, reply),
+                        ),
+                    )
+                    return
+                await _send(reply, format_learning_brief(enriched))
+                if enriched.status is Status.NEEDS_TEXT:
+                    await _send(reply, format_needs_text_prompt(enriched))
+                return
+
             item = await _maybe_await(
                 self.knowledge.save_link(
                     user_id=user_id,
@@ -292,6 +333,21 @@ def _chat_scoped_user_id(update: Update) -> str:
 
 async def _send(reply: Reply, text: str) -> None:
     await _maybe_await(reply(text))
+
+
+async def _send_enrichment_follow_up(done: asyncio.Task[Any], reply: Reply) -> None:
+    try:
+        item = done.result()
+    except Exception:
+        await _send(reply, "Saved with basic enrichment. AI brief is pending retry.")
+        return
+    await _send(reply, format_learning_brief(item))
+
+
+async def _enrich_saved_item(knowledge: Any, *, user_id: str, item_id: str) -> Any:
+    return await _maybe_await(
+        knowledge.enrich_saved_item(user_id=user_id, item_id=item_id),
+    )
 
 
 async def _maybe_await[T](value: T | Awaitable[T]) -> T:
