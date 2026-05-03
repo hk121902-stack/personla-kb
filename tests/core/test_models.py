@@ -46,6 +46,39 @@ def test_saved_item_tracks_default_ai_state() -> None:
     assert item.learning_brief is None
 
 
+def test_saved_item_direct_constructor_keeps_ai_defaults() -> None:
+    now = datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
+
+    item = SavedItem(
+        id="item-123",
+        user_id="telegram:123",
+        url="https://example.com/post",
+        source_type=SourceType.WEB,
+        title="Example",
+        extracted_text="Body",
+        user_note="Note",
+        tags=["python"],
+        topic="engineering",
+        summary="A summary",
+        priority=Priority.UNSET,
+        status=Status.READY,
+        archived=False,
+        archived_at=None,
+        created_at=now,
+        updated_at=now,
+        last_surfaced_at=None,
+        surface_count=0,
+        source_metadata={"author": "Ada"},
+        embedding=[0.1],
+    )
+
+    assert item.learning_brief is None
+    assert item.ai_status is AIStatus.PENDING
+    assert item.ai_attempt_count == 0
+    assert item.ai_last_attempt_at is None
+    assert item.ai_last_error == ""
+
+
 def test_learning_brief_is_frozen_and_normalized() -> None:
     brief = LearningBrief(
         brief_version=1,

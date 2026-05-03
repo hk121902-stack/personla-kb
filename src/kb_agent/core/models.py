@@ -151,11 +151,11 @@ class SavedItem:
     surface_count: int
     source_metadata: dict[str, str]
     embedding: list[float]
-    learning_brief: LearningBrief | None
-    ai_status: AIStatus
-    ai_attempt_count: int
-    ai_last_attempt_at: datetime | None
-    ai_last_error: str
+    learning_brief: LearningBrief | None = None
+    ai_status: AIStatus = AIStatus.PENDING
+    ai_attempt_count: int = 0
+    ai_last_attempt_at: datetime | None = None
+    ai_last_error: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tags", FrozenList(self.tags))
