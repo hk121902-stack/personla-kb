@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -66,6 +67,22 @@ async def test_router_stops_after_first_success() -> None:
 
 
 @pytest.mark.asyncio
+async def test_router_successful_non_heuristic_enrichment_stamps_attempt_metadata() -> None:
+    provider = FakeProvider("gemini", "fast", _brief("gemini", "fast"))
+    router = AIProviderRouter(
+        [ProviderChainEntry("gemini", "fast")],
+        providers={"gemini:fast": provider},
+    )
+    item = replace(_item(), ai_attempt_count=2)
+
+    enriched = await router.enrich(item, None)
+
+    assert enriched.ai_status is AIStatus.READY
+    assert enriched.ai_attempt_count == 3
+    assert enriched.ai_last_attempt_at == item.updated_at
+
+
+@pytest.mark.asyncio
 async def test_router_falls_back_on_rate_limit() -> None:
     first = FakeProvider(
         "gemini",
@@ -105,6 +122,63 @@ async def test_router_heuristic_after_real_failure_is_retry_pending() -> None:
     assert enriched.ai_status is AIStatus.RETRY_PENDING
     assert enriched.status is Status.READY
     assert "ollama unavailable" in enriched.ai_last_error
+
+
+@pytest.mark.asyncio
+async def test_router_heuristic_fallback_stamps_attempt_metadata_and_preserves_real_error() -> None:
+    first = FakeProvider(
+        "ollama",
+        "qwen3:8b",
+        AIProviderError(AIErrorCategory.LOCAL_PROVIDER_UNAVAILABLE, "ollama unavailable"),
+    )
+    heuristic = FakeProvider("heuristic", "heuristic", _brief("heuristic", "heuristic"))
+    router = AIProviderRouter(
+        [ProviderChainEntry("ollama", "qwen3:8b"), ProviderChainEntry("heuristic", "heuristic")],
+        providers={"ollama:qwen3:8b": first, "heuristic:heuristic": heuristic},
+    )
+    item = replace(_item(), ai_attempt_count=4)
+
+    enriched = await router.enrich(item, None)
+
+    assert enriched.learning_brief is not None
+    assert enriched.learning_brief.provider == "heuristic"
+    assert enriched.ai_attempt_count == 5
+    assert enriched.ai_last_attempt_at == item.updated_at
+    assert enriched.status is Status.READY
+    assert enriched.ai_status is AIStatus.RETRY_PENDING
+    assert "ollama unavailable" in enriched.ai_last_error
+    assert "heuristic" not in enriched.ai_last_error
+
+
+@pytest.mark.asyncio
+async def test_router_all_providers_fail_stamps_attempt_metadata_and_preserves_real_error() -> None:
+    first = FakeProvider(
+        "ollama",
+        "qwen3:8b",
+        AIProviderError(AIErrorCategory.LOCAL_PROVIDER_UNAVAILABLE, "ollama unavailable"),
+    )
+    router = AIProviderRouter(
+        [ProviderChainEntry("ollama", "qwen3:8b"), ProviderChainEntry("heuristic", "heuristic")],
+        providers={"ollama:qwen3:8b": first},
+    )
+    item = replace(_item(), ai_attempt_count=1)
+
+    enriched = await router.enrich(item, None)
+
+    assert enriched.ai_attempt_count == 2
+    assert enriched.ai_last_attempt_at == item.updated_at
+    assert enriched.ai_status is AIStatus.RETRY_PENDING
+    assert enriched.status is Status.FAILED_ENRICHMENT
+    assert "ollama unavailable" in enriched.ai_last_error
+    assert "provider is not configured" not in enriched.ai_last_error
+
+
+def test_provider_chain_entry_parse_preserves_model_colons() -> None:
+    entry = ProviderChainEntry.parse("ollama:qwen3:8b")
+
+    assert entry.provider == "ollama"
+    assert entry.model == "qwen3:8b"
+    assert entry.key() == "ollama:qwen3:8b"
 
 
 def test_router_updates_runtime_model_only_inside_configured_chain() -> None:

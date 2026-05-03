@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from typing import Protocol
 
 from kb_agent.ai.briefs import AIProviderError, sync_brief_to_item
@@ -67,9 +66,15 @@ class AIProviderRouter:
         item: SavedItem,
         extracted: ExtractedContent | None,
     ) -> SavedItem:
+        attempt_at = item.updated_at
+        item = replace(
+            item,
+            ai_attempt_count=item.ai_attempt_count + 1,
+            ai_last_attempt_at=attempt_at,
+        )
         last_error = ""
+        first_real_provider_error = ""
         real_provider_failed = False
-        now = datetime.now(UTC)
 
         for entry in self._current_chain:
             provider = self._providers.get(entry.key())
@@ -77,6 +82,7 @@ class AIProviderRouter:
                 last_error = f"{entry.key()} provider is not configured"
                 if entry.provider != "heuristic":
                     real_provider_failed = True
+                    first_real_provider_error = first_real_provider_error or last_error
                 continue
 
             try:
@@ -85,21 +91,24 @@ class AIProviderRouter:
                 last_error = str(error)
                 if entry.provider != "heuristic":
                     real_provider_failed = True
+                    first_real_provider_error = first_real_provider_error or last_error
                 continue
             except Exception as error:
                 last_error = str(error) or error.__class__.__name__
                 if entry.provider != "heuristic":
                     real_provider_failed = True
+                    first_real_provider_error = first_real_provider_error or last_error
                 continue
 
-            self._last_error = last_error
+            diagnostic_error = first_real_provider_error or last_error
+            self._last_error = diagnostic_error
             if entry.provider == "heuristic" and real_provider_failed:
-                item_with_error = replace(item, ai_last_error=last_error)
+                item_with_error = replace(item, ai_last_error=diagnostic_error)
                 return sync_brief_to_item(
                     item_with_error,
                     brief,
                     ready=False,
-                    now=now,
+                    now=attempt_at,
                     extracted=extracted,
                 )
 
@@ -107,17 +116,18 @@ class AIProviderRouter:
                 item,
                 brief,
                 ready=True,
-                now=now,
+                now=attempt_at,
                 extracted=extracted,
             )
 
-        self._last_error = last_error
+        diagnostic_error = first_real_provider_error or last_error
+        self._last_error = diagnostic_error
         return replace(
             item,
             ai_status=AIStatus.RETRY_PENDING,
-            ai_last_error=last_error,
+            ai_last_error=diagnostic_error,
             status=Status.FAILED_ENRICHMENT,
-            updated_at=now,
+            updated_at=attempt_at,
         )
 
     async def synthesize_answer(self, question: str, matches: list[SavedItem]) -> str:
