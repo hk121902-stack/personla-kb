@@ -48,6 +48,9 @@ class Settings:
         weekly_digest_day = os.getenv("KB_WEEKLY_DIGEST_DAY", cls.weekly_digest_day).lower()
         if weekly_digest_day not in _VALID_WEEKLY_DAYS:
             raise ValueError("KB_WEEKLY_DIGEST_DAY must be one of mon/tue/wed/thu/fri/sat/sun")
+        ai_provider_chain = os.getenv("KB_AI_PROVIDER_CHAIN", cls.ai_provider_chain)
+        if not ai_provider_chain.strip():
+            raise ValueError("KB_AI_PROVIDER_CHAIN must not be empty")
 
         return cls(
             telegram_bot_token=token,
@@ -57,7 +60,7 @@ class Settings:
             daily_digest_hour=daily_digest_hour,
             weekly_digest_day=weekly_digest_day,
             weekly_digest_hour=weekly_digest_hour,
-            ai_provider_chain=os.getenv("KB_AI_PROVIDER_CHAIN", cls.ai_provider_chain),
+            ai_provider_chain=ai_provider_chain,
             gemini_api_key=os.getenv("KB_GEMINI_API_KEY", ""),
             gemini_model=os.getenv("KB_GEMINI_MODEL", cls.gemini_model),
             ollama_base_url=os.getenv("KB_OLLAMA_BASE_URL", cls.ollama_base_url),

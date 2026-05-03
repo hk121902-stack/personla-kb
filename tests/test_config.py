@@ -47,6 +47,15 @@ def test_settings_reads_phase_two_ai_config(monkeypatch) -> None:
     assert settings.ai_retry_interval_minutes == 15
 
 
+def test_settings_rejects_empty_ai_provider_chain(monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("KB_TELEGRAM_CHAT_ID", "123")
+    monkeypatch.setenv("KB_AI_PROVIDER_CHAIN", "   ")
+
+    with pytest.raises(ValueError, match="KB_AI_PROVIDER_CHAIN must not be empty"):
+        Settings.from_env()
+
+
 def test_settings_requires_telegram_chat_id(monkeypatch) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.delenv("KB_TELEGRAM_CHAT_ID", raising=False)
@@ -80,4 +89,35 @@ def test_settings_rejects_non_integer_digest_hour_with_config_error(monkeypatch)
     monkeypatch.setenv("KB_DAILY_DIGEST_HOUR", "morning")
 
     with pytest.raises(ValueError, match="KB_DAILY_DIGEST_HOUR must be an integer hour"):
+        Settings.from_env()
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("KB_AI_SYNC_WAIT_SECONDS", "soon", "KB_AI_SYNC_WAIT_SECONDS must be a number"),
+        ("KB_AI_SYNC_WAIT_SECONDS", "-1", "KB_AI_SYNC_WAIT_SECONDS must be zero or greater"),
+        (
+            "KB_AI_RETRY_INTERVAL_MINUTES",
+            "later",
+            "KB_AI_RETRY_INTERVAL_MINUTES must be a number",
+        ),
+        (
+            "KB_AI_RETRY_INTERVAL_MINUTES",
+            "-5",
+            "KB_AI_RETRY_INTERVAL_MINUTES must be zero or greater",
+        ),
+    ],
+)
+def test_settings_rejects_invalid_ai_numeric_config(
+    monkeypatch,
+    name: str,
+    value: str,
+    message: str,
+) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("KB_TELEGRAM_CHAT_ID", "123")
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValueError, match=message):
         Settings.from_env()
