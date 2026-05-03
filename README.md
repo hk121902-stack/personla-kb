@@ -1,32 +1,50 @@
 # Personal Knowledge Base Agent
 
-Telegram-first personal knowledge base agent for saving links, resurfacing them, and asking saved-first questions.
+Telegram-first personal knowledge base agent for saving links, surfacing them later, and answering questions from your own saved knowledge first.
 
-## Development
+## Features
+
+- Telegram bot interface (`save`, `ask`, `digest`, `review archive`).
+- Save links immediately, with optional notes and priority.
+- Fallback path when extraction fails (link is still saved, and you can add manual context).
+- Daily + weekly digest generation with scheduled delivery.
+- Duplicate/low-value item recommendations for archival review.
+- Search and answer flow that excludes archived items by default.
+- Lightweight SQLite-backed storage and a modular core suitable for future providers.
+
+## Quick Start
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+cp .env.example .env
 pip install -e ".[dev]"
+python -m kb_agent.app
+```
+
+Populate `.env` with:
+
+- `TELEGRAM_BOT_TOKEN` (required)
+- `KB_TELEGRAM_CHAT_ID` (required; filters inbound messages and links digests to the target chat)
+
+Optional runtime configuration:
+
+- `KB_DAILY_DIGEST_HOUR`
+- `KB_WEEKLY_DIGEST_DAY`
+- `KB_WEEKLY_DIGEST_HOUR`
+- `KB_TIMEZONE`
+- `KB_AI_PROVIDER` (`heuristic` is currently supported without an external AI key)
+
+Run tests:
+
+```bash
 pytest
 ruff check .
 ```
 
-## Runtime
-
-Copy `.env.example` to `.env`, fill `TELEGRAM_BOT_TOKEN` and `KB_TELEGRAM_CHAT_ID`, then run the bot:
-
-```bash
-python -m kb_agent.app
-```
-
-`TELEGRAM_BOT_TOKEN` and `KB_TELEGRAM_CHAT_ID` are required. `KB_TELEGRAM_CHAT_ID` enables scheduled proactive digests and restricts inbound processing to that chat; it should match the chat where items are saved because the bot stores knowledge by chat id.
-
-Digest scheduling is controlled by `KB_DAILY_DIGEST_HOUR`, `KB_WEEKLY_DIGEST_DAY`, `KB_WEEKLY_DIGEST_HOUR`, and `KB_TIMEZONE`. `KB_AI_PROVIDER` is reserved for provider selection; this MVP supports only `heuristic`, which runs without an external API key.
-
 ## Telegram Commands
 
-- Send a plain link to save it.
+- Send a plain link: saves immediately.
 - `save <link> note: <note> priority: high|medium|low`
 - `ask <question>`
 - `digest today`
@@ -39,4 +57,14 @@ Archived items are excluded from default answers and digests.
 
 ## Extraction Fallback
 
-Some X and LinkedIn content may be blocked by platform access rules. The bot still saves the link and asks you to paste the useful text as a note by sending `save <url> note: <text>` when extraction fails.
+If source extraction is blocked, the bot keeps the URL and prompts you to add your own summary text:
+`save <url> note: <text>`.
+
+## Release Notes
+
+See `CHANGELOG.md` for version history. Current release: `v0.0.1`.
+
+## Development Notes
+
+- `docs/superpowers/specs/2026-05-03-personal-knowledge-base-agent-design.md` captures the MVP design rationale.
+- Tests are in `tests/`, and core behavior is validated independently from Telegram adapter glue.
