@@ -134,6 +134,7 @@ def test_build_runtime_passes_configured_chat_id_to_application(monkeypatch) -> 
     captured = {}
 
     def fake_build_application(handler, token, *, allowed_chat_id=None):
+        captured["handler"] = handler
         captured["token"] = token
         captured["allowed_chat_id"] = allowed_chat_id
         return FakeApplication()
@@ -142,11 +143,64 @@ def test_build_runtime_passes_configured_chat_id_to_application(monkeypatch) -> 
     monkeypatch.setattr(app_module, "build_application", fake_build_application)
 
     runtime = app_module.build_runtime(
-        Settings(telegram_bot_token="token", telegram_chat_id="123"),
+        Settings(
+            telegram_bot_token="token",
+            telegram_chat_id="123",
+            ai_provider_chain="heuristic",
+            ai_sync_wait_seconds=4.0,
+        ),
     )
 
     assert runtime.application.bot.messages == []
-    assert captured == {"token": "token", "allowed_chat_id": "123"}
+    assert captured["token"] == "token"
+    assert captured["allowed_chat_id"] == "123"
+    assert captured["handler"].ai_router.status().chain == ["heuristic:heuristic"]
+    assert captured["handler"].ai_sync_wait_seconds == 4.0
+
+
+async def test_build_runtime_registers_ai_retry_job(monkeypatch, tmp_path) -> None:
+    scheduler = FakeScheduler()
+    captured = {}
+
+    class FakeKnowledgeService:
+        def __init__(self, **kwargs) -> None:
+            self.retry_calls = []
+            captured["knowledge"] = self
+
+        async def retry_pending_ai(self, *, limit: int, max_attempts: int):
+            self.retry_calls.append({"limit": limit, "max_attempts": max_attempts})
+            return []
+
+    def fake_build_application(handler, token, *, allowed_chat_id=None):
+        return FakeApplication()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeHttpClient)
+    monkeypatch.setattr(app_module, "AsyncIOScheduler", lambda timezone: scheduler)
+    monkeypatch.setattr(app_module, "KnowledgeService", FakeKnowledgeService)
+    monkeypatch.setattr(app_module, "build_application", fake_build_application)
+
+    runtime = app_module.build_runtime(
+        Settings(
+            telegram_bot_token="token",
+            telegram_chat_id="123",
+            database_path=str(tmp_path / "kb.sqlite3"),
+            ai_provider_chain="heuristic",
+            ai_retry_interval_minutes=12,
+        ),
+    )
+
+    assert runtime.scheduler is scheduler
+    assert [job["name"] for job in scheduler.jobs] == [
+        "daily_digest",
+        "weekly_digest",
+        "ai_retry",
+    ]
+    assert scheduler.jobs[2]["id"] == "ai_retry"
+    assert scheduler.jobs[2]["trigger"].interval.total_seconds() == 12 * 60
+
+    await scheduler.jobs[2]["func"]()
+
+    assert captured["knowledge"].retry_calls == [{"limit": 10, "max_attempts": 3}]
 
 
 def test_main_starts_and_stops_scheduler_from_application_lifecycle(monkeypatch) -> None:

@@ -1,6 +1,12 @@
 import pytest
 
+import kb_agent.config as config_module
 from kb_agent.config import Settings
+
+
+@pytest.fixture(autouse=True)
+def ignore_dotenv(monkeypatch) -> None:
+    monkeypatch.setattr(config_module, "load_dotenv", lambda: False)
 
 
 def test_settings_reads_environment(monkeypatch) -> None:
@@ -13,7 +19,32 @@ def test_settings_reads_environment(monkeypatch) -> None:
     assert settings.telegram_bot_token == "token"
     assert settings.database_path == "./tmp/kb.sqlite3"
     assert settings.telegram_chat_id == "123"
-    assert settings.ai_provider == "heuristic"
+    assert (
+        settings.ai_provider_chain
+        == "gemini:gemini-2.5-flash-lite,gemini:gemini-2.5-flash,ollama:qwen3:8b,heuristic"
+    )
+
+
+def test_settings_reads_phase_two_ai_config(monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("KB_TELEGRAM_CHAT_ID", "123")
+    monkeypatch.setenv("KB_AI_PROVIDER_CHAIN", "gemini:lite,ollama:qwen3:8b,heuristic")
+    monkeypatch.setenv("KB_GEMINI_API_KEY", "gemini-key")
+    monkeypatch.setenv("KB_GEMINI_MODEL", "lite")
+    monkeypatch.setenv("KB_OLLAMA_BASE_URL", "http://localhost:11434")
+    monkeypatch.setenv("KB_OLLAMA_MODEL", "qwen3:8b")
+    monkeypatch.setenv("KB_AI_SYNC_WAIT_SECONDS", "4")
+    monkeypatch.setenv("KB_AI_RETRY_INTERVAL_MINUTES", "15")
+
+    settings = Settings.from_env()
+
+    assert settings.ai_provider_chain == "gemini:lite,ollama:qwen3:8b,heuristic"
+    assert settings.gemini_api_key == "gemini-key"
+    assert settings.gemini_model == "lite"
+    assert settings.ollama_base_url == "http://localhost:11434"
+    assert settings.ollama_model == "qwen3:8b"
+    assert settings.ai_sync_wait_seconds == 4.0
+    assert settings.ai_retry_interval_minutes == 15
 
 
 def test_settings_requires_telegram_chat_id(monkeypatch) -> None:

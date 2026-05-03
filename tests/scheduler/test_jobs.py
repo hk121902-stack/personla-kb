@@ -1,4 +1,4 @@
-from kb_agent.scheduler.jobs import build_digest_jobs
+from kb_agent.scheduler.jobs import build_ai_retry_job, build_digest_jobs
 
 
 def test_build_digest_jobs_returns_daily_and_weekly_jobs() -> None:
@@ -14,3 +14,11 @@ def test_build_digest_jobs_returns_daily_and_weekly_jobs() -> None:
     assert [job.kind for job in jobs] == ["today", "week"]
     assert [job.timezone for job in jobs] == ["Asia/Kolkata", "Asia/Kolkata"]
     assert jobs[1].day == "sun"
+
+
+def test_build_ai_retry_job() -> None:
+    job = build_ai_retry_job(interval_minutes=30)
+
+    assert job.name == "ai_retry"
+    assert job.kind == "ai_retry"
+    assert job.interval_minutes == 30

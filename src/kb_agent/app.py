@@ -8,16 +8,20 @@ from typing import Any
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from telegram.ext import Application
 
+from kb_agent.ai.gemini import GeminiBriefProvider
+from kb_agent.ai.ollama import OllamaBriefProvider
 from kb_agent.ai.providers import HeuristicAIProvider
+from kb_agent.ai.router import AIProviderRouter, ProviderChainEntry
 from kb_agent.config import Settings
 from kb_agent.core.archive_review import ArchiveReviewService
 from kb_agent.core.digests import DigestService
 from kb_agent.core.retrieval import RetrievalService
 from kb_agent.core.service import KnowledgeService, SystemClock
 from kb_agent.extraction.extractors import WebpageExtractor
-from kb_agent.scheduler.jobs import DigestJob, build_digest_jobs
+from kb_agent.scheduler.jobs import DigestJob, build_ai_retry_job, build_digest_jobs
 from kb_agent.storage.sqlite import SQLiteItemRepository
 from kb_agent.telegram.bot import TelegramMessageHandler, build_application
 from kb_agent.telegram.formatter import format_daily_digest, format_weekly_digest
@@ -32,13 +36,10 @@ class Runtime:
 
 
 def build_runtime(settings: Settings) -> Runtime:
-    if settings.ai_provider != "heuristic":
-        raise ValueError(f"Unsupported AI provider: {settings.ai_provider}")
-
     repository = SQLiteItemRepository(settings.database_path)
     http_client = httpx.AsyncClient()
     extractor = WebpageExtractor(http_client)
-    ai_provider = HeuristicAIProvider()
+    ai_provider = build_ai_router(settings, http_client)
     clock = SystemClock()
 
     knowledge = KnowledgeService(
@@ -55,6 +56,8 @@ def build_runtime(settings: Settings) -> Runtime:
         retrieval=retrieval,
         digest_service=digest_service,
         archive_review_service=archive_review_service,
+        ai_router=ai_provider,
+        ai_sync_wait_seconds=settings.ai_sync_wait_seconds,
     )
     application = build_application(
         handler,
@@ -70,6 +73,18 @@ def build_runtime(settings: Settings) -> Runtime:
             scheduler=scheduler,
             settings=settings,
         )
+        retry_job = build_ai_retry_job(interval_minutes=settings.ai_retry_interval_minutes)
+
+        async def retry_ai() -> None:
+            await knowledge.retry_pending_ai(limit=10, max_attempts=3)
+
+        scheduler.add_job(
+            retry_ai,
+            IntervalTrigger(minutes=retry_job.interval_minutes, timezone=settings.timezone),
+            id=retry_job.name,
+            name=retry_job.name,
+            replace_existing=True,
+        )
 
     return Runtime(
         settings=settings,
@@ -77,6 +92,35 @@ def build_runtime(settings: Settings) -> Runtime:
         application=application,
         scheduler=scheduler,
     )
+
+
+def build_ai_router(settings: Settings, http_client: httpx.AsyncClient) -> AIProviderRouter:
+    chain = [
+        ProviderChainEntry.parse(entry)
+        for entry in settings.ai_provider_chain.split(",")
+        if entry.strip()
+    ]
+    heuristic = HeuristicAIProvider()
+    providers = {"heuristic:heuristic": heuristic}
+    for entry in chain:
+        if entry.provider == "gemini":
+            providers[entry.key()] = GeminiBriefProvider(
+                http_client=http_client,
+                api_key=settings.gemini_api_key,
+                model=entry.model,
+            )
+        elif entry.provider == "ollama":
+            providers[entry.key()] = OllamaBriefProvider(
+                http_client=http_client,
+                base_url=settings.ollama_base_url,
+                model=entry.model,
+            )
+        elif entry.provider == "heuristic":
+            providers[entry.key()] = heuristic
+        else:
+            raise ValueError(f"Unsupported AI provider in chain: {entry.provider}")
+
+    return AIProviderRouter(chain=chain, providers=providers)
 
 
 def register_digest_jobs(

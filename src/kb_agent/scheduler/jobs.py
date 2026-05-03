@@ -13,6 +13,13 @@ class DigestJob:
     day: str | None = None
 
 
+@dataclass(frozen=True)
+class AIRetryJob:
+    name: str
+    kind: str
+    interval_minutes: int
+
+
 def build_digest_jobs(
     *,
     user_id: str,
@@ -38,3 +45,7 @@ def build_digest_jobs(
             day=weekly_day,
         ),
     ]
+
+
+def build_ai_retry_job(*, interval_minutes: int) -> AIRetryJob:
+    return AIRetryJob(name="ai_retry", kind="ai_retry", interval_minutes=interval_minutes)

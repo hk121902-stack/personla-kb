@@ -18,7 +18,16 @@ class Settings:
     daily_digest_hour: int = 9
     weekly_digest_day: str = "sun"
     weekly_digest_hour: int = 10
-    ai_provider: str = "heuristic"
+    ai_provider_chain: str = (
+        "gemini:gemini-2.5-flash-lite,gemini:gemini-2.5-flash,"
+        "ollama:qwen3:8b,heuristic"
+    )
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash-lite"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen3:8b"
+    ai_sync_wait_seconds: float = 6.0
+    ai_retry_interval_minutes: int = 30
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -48,7 +57,21 @@ class Settings:
             daily_digest_hour=daily_digest_hour,
             weekly_digest_day=weekly_digest_day,
             weekly_digest_hour=weekly_digest_hour,
-            ai_provider=os.getenv("KB_AI_PROVIDER", cls.ai_provider),
+            ai_provider_chain=os.getenv("KB_AI_PROVIDER_CHAIN", cls.ai_provider_chain),
+            gemini_api_key=os.getenv("KB_GEMINI_API_KEY", ""),
+            gemini_model=os.getenv("KB_GEMINI_MODEL", cls.gemini_model),
+            ollama_base_url=os.getenv("KB_OLLAMA_BASE_URL", cls.ollama_base_url),
+            ollama_model=os.getenv("KB_OLLAMA_MODEL", cls.ollama_model),
+            ai_sync_wait_seconds=_env_float(
+                "KB_AI_SYNC_WAIT_SECONDS",
+                cls.ai_sync_wait_seconds,
+            ),
+            ai_retry_interval_minutes=int(
+                _env_float(
+                    "KB_AI_RETRY_INTERVAL_MINUTES",
+                    float(cls.ai_retry_interval_minutes),
+                ),
+            ),
         )
 
 
@@ -71,6 +94,19 @@ def _env_hour(name: str, default: int) -> int:
     if hour < 0 or hour > 23:
         raise ValueError(f"{name} must be between 0 and 23")
     return hour
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a number") from error
+    if parsed < 0:
+        raise ValueError(f"{name} must be zero or greater")
+    return parsed
 
 
 def _validate_timezone(timezone: str) -> None:
