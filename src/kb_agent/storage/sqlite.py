@@ -9,7 +9,8 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from kb_agent.core.models import Priority, SavedItem, SourceType, Status
+from kb_agent.core.aliases import is_item_alias
+from kb_agent.core.models import AIStatus, LearningBrief, Priority, SavedItem, SourceType, Status
 
 
 class SQLiteItemRepository:
@@ -72,11 +73,96 @@ class SQLiteItemRepository:
 
         return [self._from_row(row) for row in rows]
 
+    def resolve_item_ref(self, user_id: str, item_ref: str) -> str | None:
+        ref = item_ref.strip().lower()
+        if not ref:
+            return None
+        if not is_item_alias(ref):
+            item = self.get(ref)
+            if item is None or item.user_id != user_id:
+                return None
+            return item.id
+
+        prefix = ref.removeprefix("kb_")
+        with closing(self._connect()) as connection:
+            with connection:
+                rows = connection.execute(
+                    "SELECT id FROM saved_items WHERE user_id = ? AND lower(id) LIKE ? "
+                    "ORDER BY length(id) ASC, id ASC",
+                    (user_id, f"{prefix}%"),
+                ).fetchall()
+        if len(rows) != 1:
+            return None
+        return rows[0]["id"]
+
+    def list_ai_retry_candidates(self, *, limit: int, max_attempts: int) -> list[SavedItem]:
+        with closing(self._connect()) as connection:
+            with connection:
+                rows = connection.execute(
+                    "SELECT * FROM saved_items "
+                    "WHERE archived = 0 "
+                    "AND ai_status IN ('pending', 'retry_pending') "
+                    "AND ai_attempt_count < ? "
+                    "ORDER BY ai_last_attempt_at IS NOT NULL, ai_last_attempt_at ASC, "
+                    "created_at ASC, id ASC "
+                    "LIMIT ?",
+                    (max_attempts, limit),
+                ).fetchall()
+        return [self._from_row(row) for row in rows]
+
+    def count_ai_retry_pending(self) -> int:
+        with closing(self._connect()) as connection:
+            with connection:
+                row = connection.execute(
+                    "SELECT COUNT(*) AS count FROM saved_items "
+                    "WHERE archived = 0 AND ai_status IN ('pending', 'retry_pending')",
+                ).fetchone()
+        return int(row["count"])
+
+    def last_ai_error(self) -> str:
+        with closing(self._connect()) as connection:
+            with connection:
+                row = connection.execute(
+                    "SELECT ai_last_error FROM saved_items "
+                    "WHERE ai_last_error != '' "
+                    "ORDER BY ai_last_attempt_at IS NULL, ai_last_attempt_at DESC, "
+                    "updated_at DESC "
+                    "LIMIT 1",
+                ).fetchone()
+        if row is None:
+            return ""
+        return str(row["ai_last_error"])
+
     def _initialize_schema(self) -> None:
         schema = resources.files("kb_agent.storage").joinpath("schema.sql").read_text()
         with closing(self._connect()) as connection:
             with connection:
                 connection.executescript(schema)
+                _ensure_column(
+                    connection,
+                    "saved_items",
+                    "learning_brief_json",
+                    "TEXT NOT NULL DEFAULT '{}'",
+                )
+                _ensure_column(
+                    connection,
+                    "saved_items",
+                    "ai_status",
+                    "TEXT NOT NULL DEFAULT 'pending'",
+                )
+                _ensure_column(
+                    connection,
+                    "saved_items",
+                    "ai_attempt_count",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
+                _ensure_column(connection, "saved_items", "ai_last_attempt_at", "TEXT")
+                _ensure_column(
+                    connection,
+                    "saved_items",
+                    "ai_last_error",
+                    "TEXT NOT NULL DEFAULT ''",
+                )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)
@@ -105,6 +191,11 @@ class SQLiteItemRepository:
             "last_surfaced_at": _datetime_to_text(item.last_surfaced_at),
             "surface_count": item.surface_count,
             "source_metadata_json": json.dumps(dict(item.source_metadata)),
+            "learning_brief_json": _brief_to_json(item.learning_brief),
+            "ai_status": item.ai_status.value,
+            "ai_attempt_count": item.ai_attempt_count,
+            "ai_last_attempt_at": _datetime_to_text(item.ai_last_attempt_at),
+            "ai_last_error": item.ai_last_error,
             "embedding_json": json.dumps(list(item.embedding)),
         }
 
@@ -130,8 +221,68 @@ class SQLiteItemRepository:
             last_surfaced_at=_text_to_datetime(row["last_surfaced_at"]),
             surface_count=row["surface_count"],
             source_metadata=json.loads(row["source_metadata_json"]),
+            learning_brief=_json_to_brief(row["learning_brief_json"]),
+            ai_status=AIStatus(row["ai_status"]),
+            ai_attempt_count=row["ai_attempt_count"],
+            ai_last_attempt_at=_text_to_datetime(row["ai_last_attempt_at"]),
+            ai_last_error=row["ai_last_error"],
             embedding=json.loads(row["embedding_json"]),
         )
+
+
+def _ensure_column(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    definition: str,
+) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in columns:
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def _brief_to_json(brief: LearningBrief | None) -> str:
+    if brief is None:
+        return "{}"
+    return json.dumps(
+        {
+            "brief_version": brief.brief_version,
+            "provider": brief.provider,
+            "model": brief.model,
+            "generated_at": brief.generated_at.isoformat(),
+            "title": brief.title,
+            "topic": brief.topic,
+            "tags": list(brief.tags),
+            "summary": brief.summary,
+            "key_takeaways": list(brief.key_takeaways),
+            "why_it_matters": brief.why_it_matters,
+            "estimated_time_minutes": brief.estimated_time_minutes,
+            "suggested_next_action": brief.suggested_next_action,
+        },
+    )
+
+
+def _json_to_brief(value: str) -> LearningBrief | None:
+    data = json.loads(value or "{}")
+    if not data:
+        return None
+    return LearningBrief(
+        brief_version=data["brief_version"],
+        provider=data["provider"],
+        model=data["model"],
+        generated_at=datetime.fromisoformat(data["generated_at"]),
+        title=data["title"],
+        topic=data["topic"],
+        tags=data["tags"],
+        summary=data["summary"],
+        key_takeaways=data["key_takeaways"],
+        why_it_matters=data["why_it_matters"],
+        estimated_time_minutes=data["estimated_time_minutes"],
+        suggested_next_action=data["suggested_next_action"],
+    )
 
 
 def _datetime_to_text(value: datetime | None) -> str | None:

@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS saved_items (
   last_surfaced_at TEXT,
   surface_count INTEGER NOT NULL,
   source_metadata_json TEXT NOT NULL,
+  learning_brief_json TEXT NOT NULL DEFAULT '{}',
+  ai_status TEXT NOT NULL DEFAULT 'pending',
+  ai_attempt_count INTEGER NOT NULL DEFAULT 0,
+  ai_last_attempt_at TEXT,
+  ai_last_error TEXT NOT NULL DEFAULT '',
   embedding_json TEXT NOT NULL
 );
 
