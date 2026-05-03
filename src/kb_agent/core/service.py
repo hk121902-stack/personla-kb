@@ -52,7 +52,19 @@ class KnowledgeService:
             )
         else:
             self.repository.save(item)
-        return await self.enrich_saved_item(user_id=user_id, item_id=item.id)
+
+        extracted = await self._extract_for_item(item)
+        if extracted is None:
+            needs_text = replace(
+                item,
+                title=item.url,
+                status=Status.NEEDS_TEXT,
+                updated_at=self.clock.now(),
+            )
+            self.repository.save(needs_text)
+            return needs_text
+
+        return await self._enrich_and_save(item, extracted)
 
     def create_link(
         self,
@@ -102,8 +114,17 @@ class KnowledgeService:
                 updated_at=retry_at,
             )
             self.repository.save(updated)
+            enriched = await self.enrich_saved_item(user_id=item.user_id, item_id=item.id)
+            persisted = self.repository.get(item.id) or enriched
+            if persisted.ai_attempt_count <= item.ai_attempt_count:
+                persisted = replace(
+                    persisted,
+                    ai_attempt_count=item.ai_attempt_count + 1,
+                    ai_last_attempt_at=persisted.ai_last_attempt_at or retry_at,
+                )
+                self.repository.save(persisted)
             results.append(
-                await self.enrich_saved_item(user_id=item.user_id, item_id=item.id),
+                persisted,
             )
         return results
 

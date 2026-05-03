@@ -49,6 +49,57 @@ class RecordingAIProvider(HeuristicAIProvider):
         return await super().enrich(item, extracted)
 
 
+class ExtractedRecordingAIProvider(HeuristicAIProvider):
+    def __init__(self) -> None:
+        self.extracted: list[ExtractedContent | None] = []
+
+    async def enrich(
+        self,
+        item: SavedItem,
+        extracted: ExtractedContent | None,
+    ) -> SavedItem:
+        self.extracted.append(extracted)
+        return await super().enrich(item, extracted)
+
+
+class ReadyOnMissingTextAIProvider(HeuristicAIProvider):
+    def __init__(self) -> None:
+        self.calls: list[ExtractedContent | None] = []
+
+    async def enrich(
+        self,
+        item: SavedItem,
+        extracted: ExtractedContent | None,
+    ) -> SavedItem:
+        self.calls.append(extracted)
+        if extracted is None:
+            return replace(
+                item,
+                title="Provider ignored missing text",
+                extracted_text="",
+                summary="Provider marked missing content ready.",
+                status=Status.READY,
+                ai_status=AIStatus.READY,
+            )
+        return await super().enrich(item, extracted)
+
+
+class RetryCountingAIProvider(HeuristicAIProvider):
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def enrich(
+        self,
+        item: SavedItem,
+        extracted: ExtractedContent | None,
+    ) -> SavedItem:
+        self.calls.append(item.id)
+        enriched = _brief_item(item, now=FixedClock().now())
+        if item.url.endswith("/router"):
+            return replace(enriched, ai_attempt_count=item.ai_attempt_count + 1)
+        return enriched
+
+
 def _brief_item(item: SavedItem, *, now: datetime) -> SavedItem:
     brief = LearningBrief(
         brief_version=1,
@@ -107,6 +158,7 @@ async def test_create_link_saves_without_running_extraction_or_ai(tmp_path) -> N
     assert item.status is Status.PROCESSING
     assert item.ai_status is AIStatus.PENDING
     assert item.user_note == "capture now"
+    assert item.priority is Priority.HIGH
     assert ai.calls == []
     assert repo.get(item.id) == item
 
@@ -128,6 +180,30 @@ async def test_enrich_saved_item_updates_existing_item(tmp_path) -> None:
     assert enriched.ai_status is AIStatus.READY
     assert enriched.learning_brief.title == "Refreshed Brief"
     assert repo.get(item.id) == enriched
+
+
+@pytest.mark.asyncio
+async def test_enrich_saved_item_passes_extracted_content_to_ai_provider(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    extracted = ExtractedContent(
+        title="Extractor Title",
+        text="Extractor text should be sent to the provider.",
+        metadata={"source": "extractor"},
+    )
+    ai = ExtractedRecordingAIProvider()
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(extracted),
+        ai_provider=ai,
+        clock=FixedClock(),
+    )
+    item = service.create_link(user_id="telegram:123", url="https://example.com/source")
+
+    enriched = await service.enrich_saved_item(user_id="telegram:123", item_id=item.id)
+
+    assert ai.extracted == [extracted]
+    assert enriched.title == "Extractor Title"
+    assert enriched.extracted_text == "Extractor text should be sent to the provider."
 
 
 @pytest.mark.asyncio
@@ -154,16 +230,22 @@ async def test_refresh_item_accepts_alias(tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_retry_pending_ai_skips_archived_items_and_caps_attempts(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    ai = RetryCountingAIProvider()
     service = KnowledgeService(
         repository=repo,
         extractor=StaticExtractor(ExtractedContent(title="Source", text="Body", metadata={})),
-        ai_provider=BriefAIProvider(),
+        ai_provider=ai,
         clock=FixedClock(),
     )
     retryable = replace(
         service.create_link(user_id="telegram:123", url="https://example.com/retry"),
         ai_status=AIStatus.RETRY_PENDING,
         ai_attempt_count=1,
+    )
+    maxed = replace(
+        service.create_link(user_id="telegram:123", url="https://example.com/maxed"),
+        ai_status=AIStatus.RETRY_PENDING,
+        ai_attempt_count=3,
     )
     archived = replace(
         service.create_link(user_id="telegram:123", url="https://example.com/archive").archive(
@@ -172,13 +254,42 @@ async def test_retry_pending_ai_skips_archived_items_and_caps_attempts(tmp_path)
         ai_status=AIStatus.RETRY_PENDING,
     )
     repo.save(retryable)
+    repo.save(maxed)
     repo.save(archived)
 
     results = await service.retry_pending_ai(limit=10, max_attempts=3)
 
     assert [item.id for item in results] == [retryable.id]
+    assert ai.calls == [retryable.id]
     assert repo.get(retryable.id).ai_status is AIStatus.READY
+    assert repo.get(retryable.id).ai_attempt_count == 2
+    assert repo.get(maxed.id) == maxed
     assert repo.get(archived.id).ai_status is AIStatus.RETRY_PENDING
+
+
+@pytest.mark.asyncio
+async def test_retry_pending_ai_does_not_double_count_incrementing_provider(
+    tmp_path,
+) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(ExtractedContent(title="Source", text="Body", metadata={})),
+        ai_provider=RetryCountingAIProvider(),
+        clock=FixedClock(),
+    )
+    retryable = replace(
+        service.create_link(user_id="telegram:123", url="https://example.com/router"),
+        ai_status=AIStatus.RETRY_PENDING,
+        ai_attempt_count=1,
+    )
+    repo.save(retryable)
+
+    results = await service.retry_pending_ai(limit=10, max_attempts=3)
+
+    assert [item.id for item in results] == [retryable.id]
+    assert results[0].ai_attempt_count == 2
+    assert repo.get(retryable.id).ai_attempt_count == 2
 
 
 @pytest.mark.asyncio
@@ -274,6 +385,29 @@ async def test_save_link_persists_needs_text_when_extractor_raises(tmp_path) -> 
     assert item.status is Status.NEEDS_TEXT
     assert item.status is not Status.PROCESSING
     assert item.updated_at == FixedClock().now()
+    assert repo.get(item.id) == item
+
+
+@pytest.mark.asyncio
+async def test_save_link_does_not_call_ai_when_extraction_fails_without_text(
+    tmp_path,
+) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    ai = ReadyOnMissingTextAIProvider()
+    service = KnowledgeService(
+        repository=repo,
+        extractor=ThrowingExtractor(),
+        ai_provider=ai,
+        clock=FixedClock(),
+    )
+
+    item = await service.save_link(
+        user_id="telegram:123",
+        url="https://example.com/private",
+    )
+
+    assert item.status is Status.NEEDS_TEXT
+    assert ai.calls == []
     assert repo.get(item.id) == item
 
 
