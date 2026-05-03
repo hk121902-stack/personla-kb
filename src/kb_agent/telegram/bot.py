@@ -225,7 +225,14 @@ class TelegramMessageHandler:
         ):
             last_error = await _maybe_await(repository.last_ai_error())
             if last_error:
-                status = SimpleNamespace(chain=status.chain, last_error=last_error)
+                status = SimpleNamespace(
+                    chain=status.chain,
+                    selected_model=getattr(status, "selected_model", ""),
+                    gemini_model=getattr(status, "gemini_model", ""),
+                    ollama_base_url=getattr(status, "ollama_base_url", ""),
+                    ollama_model=getattr(status, "ollama_model", ""),
+                    last_error=last_error,
+                )
 
         await _send(
             reply,

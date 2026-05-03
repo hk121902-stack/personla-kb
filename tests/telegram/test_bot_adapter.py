@@ -632,6 +632,9 @@ async def test_handler_ai_status_uses_persisted_error_when_router_has_no_error()
     await handler.handle_text(user_id="telegram:123", text="ai status", reply=replies.append)
 
     assert "Pending retries: 2" in replies[0]
+    assert "Selected: gemini:lite" in replies[0]
+    assert "Gemini model: lite" in replies[0]
+    assert "Ollama: http://localhost:11434 (qwen3:8b)" in replies[0]
     assert "Last error: gemini failed after retry" in replies[0]
 
 
