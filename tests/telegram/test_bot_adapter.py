@@ -739,7 +739,7 @@ async def test_handler_sends_daily_digest() -> None:
     await handler.handle_text(user_id="telegram:123", text="digest today", reply=replies.append)
 
     assert digest.calls == [("daily", "telegram:123")]
-    assert replies == ["Daily tiny nudge"]
+    assert replies == ["<b>Daily tiny nudge</b>"]
 
 
 @pytest.mark.asyncio
@@ -756,7 +756,7 @@ async def test_handler_sends_weekly_digest() -> None:
     await handler.handle_text(user_id="telegram:123", text="digest week", reply=replies.append)
 
     assert digest.calls == [("weekly", "telegram:123")]
-    assert replies == ["Weekly synthesis"]
+    assert replies == ["<b>Weekly synthesis</b>"]
 
 
 @pytest.mark.asyncio
