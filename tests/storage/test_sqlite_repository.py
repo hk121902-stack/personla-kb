@@ -173,7 +173,11 @@ def test_latest_by_user_returns_newest_active_item(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     older = _latest_test_item("older1234", "telegram:123", datetime(2026, 5, 3, 9, tzinfo=UTC))
     newer = _latest_test_item("newer1234", "telegram:123", datetime(2026, 5, 3, 10, tzinfo=UTC))
-    other_user = _latest_test_item("other1234", "telegram:999", datetime(2026, 5, 3, 11, tzinfo=UTC))
+    other_user = _latest_test_item(
+        "other1234",
+        "telegram:999",
+        datetime(2026, 5, 3, 11, tzinfo=UTC),
+    )
     repo.save(older)
     repo.save(newer)
     repo.save(other_user)
