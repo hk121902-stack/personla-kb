@@ -46,7 +46,7 @@ Reply = Callable[[str], Any]
 _HELP_TEXT = "Send a link to save it, or ask a question about your knowledge base."
 _DIGEST_UNAVAILABLE = "Digest service is not available right now."
 _ARCHIVE_REVIEW_UNAVAILABLE = "Archive review is not available right now."
-_ARCHIVE_MISSING_ID = "Tell me which item to archive, like: archive <item_id>."
+_ARCHIVE_MISSING_ID = "Tell me which item to archive, like: archive &lt;item_id&gt;."
 _ARCHIVE_NOT_FOUND = "I could not find that saved item."
 _ENRICHMENT_RETRY_MESSAGE = "Saved with basic enrichment. AI brief is pending retry."
 _ITEM_ID_RE = re.compile(r"\bID:\s*(kb_[a-z0-9]+)\b", re.IGNORECASE)
@@ -347,7 +347,7 @@ class TelegramMessageHandler:
         reply: Reply,
     ) -> None:
         if not command.item_id:
-            await _send(reply, format_plain_text(_ARCHIVE_MISSING_ID))
+            await _send(reply, _ARCHIVE_MISSING_ID)
             return
 
         try:

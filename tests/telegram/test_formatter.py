@@ -256,8 +256,22 @@ def test_format_archive_recommendations_escapes_html() -> None:
         alias_for_item=lambda _: "kb_<7f3a>&",
     )
 
-    assert "- kb_&lt;7f3a&gt;&amp;: Old &lt;Link&gt; &amp; More" in text
-    assert "(old &lt;low&gt; &amp; stale)" in text
+    assert "<b>Archive recommendations</b>" in text
+    assert "ID: kb_&lt;7f3a&gt;&amp;" in text
+    assert "Old &lt;Link&gt; &amp; More" in text
+    assert "Reason: old &lt;low&gt; &amp; stale" in text
+
+
+def test_format_archive_recommendations_is_html_compact() -> None:
+    item = replace(_item(), id="7f3a9b8c1234", title="Old Link")
+    recommendation = ArchiveRecommendation(item=item, reason="old_low_priority")
+
+    text = format_archive_recommendations([recommendation])
+
+    assert "<b>Archive recommendations</b>" in text
+    assert "ID: kb_7f3a" in text
+    assert "old_low_priority" in text
+    assert "https://example.com/brief" not in text
 
 
 def test_format_learning_brief_is_compact_html_card() -> None:

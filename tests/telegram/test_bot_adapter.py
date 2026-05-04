@@ -771,7 +771,13 @@ async def test_handler_reviews_archive_recommendations() -> None:
 
     await handler.handle_text(user_id="telegram:123", text="review archive", reply=replies.append)
 
-    assert replies == ["Archive recommendations\n- kb_7f3a: Old Link (old_low_priority)"]
+    assert replies == [
+        "<b>Archive recommendations</b>\n"
+        "\n"
+        "<b>Old Link</b>\n"
+        "ID: kb_7f3a\n"
+        "Reason: old_low_priority",
+    ]
 
 
 @pytest.mark.asyncio

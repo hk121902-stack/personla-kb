@@ -234,16 +234,35 @@ def format_archive_recommendations(
     if not recommendations:
         return "No archive recommendations."
 
-    lines = ["Archive recommendations"]
+    lines = ["<b>Archive recommendations</b>"]
     for recommendation in recommendations:
         item = recommendation.item
         title = item.title or item.url
-        alias = alias_for_item(item) if alias_for_item is not None else None
-        alias = alias or alias_for_item_id(item.id)
-        lines.append(
-            f"- {_html(alias)}: {_html(title)} ({_html(recommendation.reason)})",
+        alias = _archive_item_alias(item, alias_for_item=alias_for_item)
+        lines.extend(
+            [
+                "",
+                f"<b>{_html(title)}</b>",
+                f"ID: {_html(alias)}",
+                f"Reason: {_html(recommendation.reason)}",
+            ],
         )
     return "\n".join(lines)
+
+
+def _archive_item_alias(
+    item: SavedItem,
+    *,
+    alias_for_item: Callable[[SavedItem], str | None] | None,
+) -> str:
+    if alias_for_item is not None:
+        alias = alias_for_item(item)
+        if alias:
+            return alias
+    try:
+        return alias_for_item_id(item.id)
+    except ValueError:
+        return item.id
 
 
 def format_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:
