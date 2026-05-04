@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from inspect import isawaitable
@@ -16,6 +17,7 @@ from kb_agent.telegram.formatter import (
     format_archive_recommendations,
     format_daily_digest,
     format_enrichment_retry_message,
+    format_item_details,
     format_learning_brief,
     format_needs_text_prompt,
     format_pending_learning_brief,
@@ -28,6 +30,7 @@ from kb_agent.telegram.parser import (
     AIStatusCommand,
     ArchiveCommand,
     AskCommand,
+    DetailsCommand,
     DigestCommand,
     ModelCommand,
     ParseCommand,
@@ -46,6 +49,7 @@ _ARCHIVE_REVIEW_UNAVAILABLE = "Archive review is not available right now."
 _ARCHIVE_MISSING_ID = "Tell me which item to archive, like: archive <item_id>."
 _ARCHIVE_NOT_FOUND = "I could not find that saved item."
 _ENRICHMENT_RETRY_MESSAGE = "Saved with basic enrichment. AI brief is pending retry."
+_ITEM_ID_RE = re.compile(r"\bID:\s*(kb_[a-z0-9]+)\b", re.IGNORECASE)
 
 
 class TelegramMessageHandler:
@@ -146,6 +150,15 @@ class TelegramMessageHandler:
             await _send(reply, format_retrieval_response(response))
             return
 
+        if isinstance(command, DetailsCommand):
+            await self._handle_details(
+                user_id=user_id,
+                command=command,
+                reply=reply,
+                reply_to_text=reply_to_text,
+            )
+            return
+
         if isinstance(command, DigestCommand):
             await self._handle_digest(user_id=user_id, command=command, reply=reply)
             return
@@ -195,6 +208,31 @@ class TelegramMessageHandler:
         await _send(reply, format_save_confirmation(item, alias=self._item_alias(item)))
         if item.status is Status.NEEDS_TEXT:
             await _send(reply, format_needs_text_prompt(item))
+
+    async def _handle_details(
+        self,
+        *,
+        user_id: str,
+        command: DetailsCommand,
+        reply: Reply,
+        reply_to_text: str | None,
+    ) -> None:
+        item_ref = command.item_ref.strip()
+        if not item_ref and reply_to_text:
+            item_ref = _item_ref_from_text(reply_to_text)
+
+        try:
+            if item_ref:
+                item = await _maybe_await(
+                    self.knowledge.get_item(user_id=user_id, item_ref=item_ref),
+                )
+            else:
+                item = await _maybe_await(self.knowledge.latest_item(user_id=user_id))
+        except ValueError:
+            await _send(reply, "I could not find that saved item.")
+            return
+
+        await _send(reply, format_item_details(item, alias=self._item_alias(item)))
 
     async def _handle_digest(
         self,
@@ -405,6 +443,13 @@ def _reply_to_text(update: Update) -> str | None:
     if not isinstance(text, str):
         return None
     return text
+
+
+def _item_ref_from_text(text: str) -> str:
+    match = _ITEM_ID_RE.search(text)
+    if match is None:
+        return ""
+    return match.group(1)
 
 
 async def _send(reply: Reply, text: str) -> None:

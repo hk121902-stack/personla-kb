@@ -33,6 +33,14 @@ class FakeKnowledge:
         self.archived = (user_id, item_id)
         return replace(_saved_item(title="Archived Title"), id=item_id, archived=True)
 
+    async def get_item(self, *, user_id, item_ref):
+        if item_ref == "missing":
+            raise ValueError("missing")
+        return replace(_saved_item(title="Detailed Item"), id="7f3a9b8c1234")
+
+    async def latest_item(self, *, user_id):
+        return replace(_saved_item(title="Latest Item"), id="9c11aaaa1234")
+
 
 class SlowKnowledge(FakeKnowledge):
     def __init__(self) -> None:
@@ -539,6 +547,85 @@ async def test_handler_answers_plain_question() -> None:
     )
 
     assert replies == ["From your knowledge base\nAnswer"]
+
+
+@pytest.mark.asyncio
+async def test_handler_sends_details_by_alias() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="details kb_7f3a",
+        reply=replies.append,
+    )
+
+    assert "<b>Details</b>" in replies[0]
+    assert "Detailed Item" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_sends_details_from_replied_message_id() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="more",
+        reply=replies.append,
+        reply_to_text="<b>Saved Item</b>\nID: kb_7f3a",
+    )
+
+    assert "<b>Details</b>" in replies[0]
+    assert "Detailed Item" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_plain_details_uses_latest_item() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="details",
+        reply=replies.append,
+    )
+
+    assert "Latest Item" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_details_reports_missing_item() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="details missing",
+        reply=replies.append,
+    )
+
+    assert replies == ["I could not find that saved item."]
 
 
 @pytest.mark.asyncio
