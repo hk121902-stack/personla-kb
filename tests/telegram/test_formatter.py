@@ -16,6 +16,7 @@ from kb_agent.telegram.formatter import (
     format_plain_text,
     format_retrieval_response,
     format_save_confirmation,
+    format_weekly_digest,
 )
 
 
@@ -200,6 +201,47 @@ def test_format_daily_digest_escapes_legacy_text() -> None:
 
     assert format_daily_digest("Raw <digest> & notes") == "Raw &lt;digest&gt; &amp; notes"
     assert format_daily_digest(digest) == "Daily &lt;digest&gt; &amp; notes"
+
+
+def test_format_daily_digest_uses_compact_cards() -> None:
+    item = replace(_item(), id="7f3a9b8c1234", title="Daily Item", tags=["ai"])
+    digest = type(
+        "Digest",
+        (),
+        {
+            "text": "legacy",
+            "items": [item],
+            "item_aliases": {item.id: "kb_7f3a"},
+            "kind": "today",
+        },
+    )()
+
+    text = format_daily_digest(digest)
+
+    assert "<b>Daily tiny nudge</b>" in text
+    assert "Daily Item" in text
+    assert "ID: kb_7f3a" in text
+    assert "Need more?" in text
+
+
+def test_format_weekly_digest_groups_by_topic_compactly() -> None:
+    item = replace(_item(), id="7f3a9b8c1234", title="Weekly Item", topic="AI Tools")
+    digest = type(
+        "Digest",
+        (),
+        {
+            "text": "legacy",
+            "items": [item],
+            "item_aliases": {item.id: "kb_7f3a"},
+            "kind": "week",
+        },
+    )()
+
+    text = format_weekly_digest(digest)
+
+    assert "<b>Weekly synthesis</b>" in text
+    assert "<b>AI Tools</b>" in text
+    assert "Weekly Item" in text
 
 
 def test_format_archive_recommendations_escapes_html() -> None:

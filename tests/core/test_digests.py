@@ -50,7 +50,7 @@ def test_daily_digest_includes_item_aliases(tmp_path) -> None:
 
     digest = DigestService(repo).daily(user_id="telegram:123")
 
-    assert "- kb_7f3a: one - one summary" in digest.text
+    assert digest.item_aliases[saved.id] == "kb_7f3a"
 
 
 def test_daily_digest_marks_items_surfaced_and_rotates_next_digest(tmp_path) -> None:
@@ -94,6 +94,16 @@ def test_weekly_digest_groups_items_by_topic(tmp_path) -> None:
     assert "ai" in digest.text
 
 
+def test_weekly_digest_selects_up_to_five_items(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    for index in range(7):
+        repo.save(item(f"item-{index}", Priority.HIGH, index))
+
+    digest = DigestService(repo).weekly(user_id="telegram:123")
+
+    assert len(digest.items) == 5
+
+
 def test_weekly_digest_marks_items_surfaced(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     repo.save(item("rag", Priority.HIGH, 1))
@@ -122,6 +132,6 @@ def test_weekly_digest_rotates_after_surfaced_metadata_is_persisted(tmp_path) ->
     first_ids = {saved.id for saved in first_digest.items}
     second_ids = {saved.id for saved in second_digest.items}
 
-    assert len(first_digest.items) == 7
-    assert len(second_digest.items) == 7
+    assert len(first_digest.items) == 5
+    assert len(second_digest.items) == 5
     assert second_ids - first_ids

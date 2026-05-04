@@ -9,7 +9,7 @@ from kb_agent.core.models import Priority, SavedItem, Status
 from kb_agent.core.ports import ItemRepository
 
 _DAILY_LIMIT = 3
-_WEEKLY_LIMIT = 7
+_WEEKLY_LIMIT = 5
 _PRIORITY_ORDER = {
     Priority.HIGH: 0,
     Priority.MEDIUM: 1,
@@ -22,6 +22,8 @@ _PRIORITY_ORDER = {
 class Digest:
     text: str
     items: list[SavedItem]
+    item_aliases: dict[str, str]
+    kind: str
 
 
 class DigestService:
@@ -42,7 +44,12 @@ class DigestService:
         items = self._mark_surfaced(items)
         lines = ["Daily tiny nudge"]
         lines.extend(_item_line(self.repository, user_id, item) for item in items)
-        return Digest(text="\n".join(lines), items=items)
+        return Digest(
+            text="\n".join(lines),
+            items=items,
+            item_aliases=_item_aliases(self.repository, user_id, items),
+            kind="today",
+        )
 
     def weekly(self, *, user_id: str) -> Digest:
         items = sorted(
@@ -54,7 +61,12 @@ class DigestService:
         for topic, topic_items in _group_by_topic(items).items():
             lines.append(f"{topic}:")
             lines.extend(_item_line(self.repository, user_id, item) for item in topic_items)
-        return Digest(text="\n".join(lines), items=items)
+        return Digest(
+            text="\n".join(lines),
+            items=items,
+            item_aliases=_item_aliases(self.repository, user_id, items),
+            kind="week",
+        )
 
     def _mark_surfaced(self, items: list[SavedItem]) -> list[SavedItem]:
         surfaced_at = self.now()
@@ -115,6 +127,14 @@ def _group_by_topic(items: list[SavedItem]) -> dict[str, list[SavedItem]]:
 def _item_line(repository: ItemRepository, user_id: str, item: SavedItem) -> str:
     summary = item.summary or item.title or item.url
     return f"- {_item_alias(repository, user_id, item)}: {item.title} - {summary}"
+
+
+def _item_aliases(
+    repository: ItemRepository,
+    user_id: str,
+    items: list[SavedItem],
+) -> dict[str, str]:
+    return {item.id: _item_alias(repository, user_id, item) for item in items}
 
 
 def _item_alias(repository: ItemRepository, user_id: str, item: SavedItem) -> str:

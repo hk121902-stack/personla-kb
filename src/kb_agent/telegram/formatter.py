@@ -179,11 +179,47 @@ def _compact_item_card(item: SavedItem, *, alias: str) -> str:
 
 
 def format_daily_digest(digest: TextResult | str) -> str:
-    return _format_text_result(digest)
+    if isinstance(digest, str) or not hasattr(digest, "items"):
+        return _format_text_result(digest)
+    items = list(getattr(digest, "items", []))
+    aliases = getattr(digest, "item_aliases", {}) or {}
+    lines = ["<b>Daily tiny nudge</b>"]
+    for item in items:
+        lines.extend(["", _compact_item_card(item, alias=_item_alias(item, aliases))])
+    if items:
+        first_alias = _item_alias(items[0], aliases)
+        lines.extend(
+            [
+                "",
+                f'Need more? Reply "details" to an item, or send details {_html(first_alias)}.',
+            ],
+        )
+    return "\n".join(lines)
 
 
 def format_weekly_digest(digest: TextResult | str) -> str:
-    return _format_text_result(digest)
+    if isinstance(digest, str) or not hasattr(digest, "items"):
+        return _format_text_result(digest)
+    items = list(getattr(digest, "items", []))
+    aliases = getattr(digest, "item_aliases", {}) or {}
+    lines = ["<b>Weekly synthesis</b>"]
+    grouped: dict[str, list[SavedItem]] = {}
+    for item in items:
+        topic = item.topic or (item.tags[0] if item.tags else "general")
+        grouped.setdefault(topic, []).append(item)
+    for topic, topic_items in grouped.items():
+        lines.extend(["", f"<b>{_html(topic)}</b>"])
+        for item in topic_items:
+            lines.extend(["", _compact_item_card(item, alias=_item_alias(item, aliases))])
+    if items:
+        first_alias = _item_alias(items[0], aliases)
+        lines.extend(
+            [
+                "",
+                f'Need more? Reply "details" to an item, or send details {_html(first_alias)}.',
+            ],
+        )
+    return "\n".join(lines)
 
 
 def format_digest(digest: TextResult | str) -> str:
