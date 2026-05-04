@@ -156,6 +156,46 @@ def test_repository_round_trips_saved_item(tmp_path) -> None:
     assert loaded == item
 
 
+def _latest_test_item(item_id: str, user_id: str, created_at: datetime) -> SavedItem:
+    return replace(
+        SavedItem.new(
+            user_id=user_id,
+            url=f"https://example.com/{item_id}",
+            source_type=SourceType.WEB,
+            now=created_at,
+        ),
+        id=item_id,
+        title=item_id,
+    )
+
+
+def test_latest_by_user_returns_newest_active_item(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    older = _latest_test_item("older1234", "telegram:123", datetime(2026, 5, 3, 9, tzinfo=UTC))
+    newer = _latest_test_item("newer1234", "telegram:123", datetime(2026, 5, 3, 10, tzinfo=UTC))
+    other_user = _latest_test_item("other1234", "telegram:999", datetime(2026, 5, 3, 11, tzinfo=UTC))
+    repo.save(older)
+    repo.save(newer)
+    repo.save(other_user)
+
+    assert repo.latest_by_user("telegram:123").id == "newer1234"
+
+
+def test_latest_by_user_excludes_archived_by_default(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    active = _latest_test_item("active1234", "telegram:123", datetime(2026, 5, 3, 9, tzinfo=UTC))
+    archived = replace(
+        _latest_test_item("archived1234", "telegram:123", datetime(2026, 5, 3, 10, tzinfo=UTC)),
+        archived=True,
+        archived_at=datetime(2026, 5, 3, 11, tzinfo=UTC),
+    )
+    repo.save(active)
+    repo.save(archived)
+
+    assert repo.latest_by_user("telegram:123").id == "active1234"
+    assert repo.latest_by_user("telegram:123", include_archived=True).id == "archived1234"
+
+
 def test_list_by_user_excludes_archived_items_by_default(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     active = replace(

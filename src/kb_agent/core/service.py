@@ -95,6 +95,16 @@ class KnowledgeService:
             raise ValueError("Saved item not found")
         return item_id
 
+    def get_item(self, *, user_id: str, item_ref: str) -> SavedItem:
+        item_id = self.resolve_item_ref(user_id=user_id, item_ref=item_ref)
+        return self._get_user_item(user_id=user_id, item_id=item_id)
+
+    def latest_item(self, *, user_id: str) -> SavedItem:
+        item = self.repository.latest_by_user(user_id)
+        if item is None:
+            raise ValueError("Saved item not found")
+        return item
+
     async def enrich_saved_item(self, *, user_id: str, item_id: str) -> SavedItem:
         item = self._get_user_item(user_id=user_id, item_id=item_id)
         extracted = await self._extract_for_item(item)

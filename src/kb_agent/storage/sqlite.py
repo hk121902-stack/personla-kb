@@ -79,6 +79,33 @@ class SQLiteItemRepository:
 
         return [self._from_row(row) for row in rows]
 
+    def latest_by_user(
+        self,
+        user_id: str,
+        *,
+        include_archived: bool = False,
+    ) -> SavedItem | None:
+        if include_archived:
+            sql = (
+                "SELECT * FROM saved_items WHERE user_id = ? "
+                "ORDER BY created_at DESC, id DESC LIMIT 1"
+            )
+            parameters = (user_id,)
+        else:
+            sql = (
+                "SELECT * FROM saved_items WHERE user_id = ? AND archived = 0 "
+                "ORDER BY created_at DESC, id DESC LIMIT 1"
+            )
+            parameters = (user_id,)
+
+        with closing(self._connect()) as connection:
+            with connection:
+                row = connection.execute(sql, parameters).fetchone()
+
+        if row is None:
+            return None
+        return self._from_row(row)
+
     def resolve_item_ref(self, user_id: str, item_ref: str) -> str | None:
         ref = item_ref.strip().lower()
         if not ref:

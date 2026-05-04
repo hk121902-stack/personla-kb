@@ -10,6 +10,7 @@ from kb_agent.core.models import (
     LearningBrief,
     Priority,
     SavedItem,
+    SourceType,
     Status,
 )
 from kb_agent.core.service import KnowledgeService, SystemClock
@@ -275,6 +276,60 @@ async def test_refresh_item_accepts_alias(tmp_path) -> None:
 
     assert refreshed.id == "7f3a9b8c1234"
     assert refreshed.learning_brief.title == "Refreshed Brief"
+
+
+def test_get_item_resolves_alias(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+    item = service.create_link(
+        user_id="telegram:123",
+        url="https://example.com/detail",
+    )
+    alias = service.repository.item_alias("telegram:123", item.id)
+
+    found = service.get_item(user_id="telegram:123", item_ref=alias)
+
+    assert found.id == item.id
+
+
+def test_latest_item_returns_latest_user_item(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    service = KnowledgeService(
+        repository=repo,
+        extractor=StaticExtractor(None),
+        ai_provider=HeuristicAIProvider(),
+        clock=FixedClock(),
+    )
+    older = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/older",
+            source_type=SourceType.WEB,
+            now=datetime(2026, 5, 3, 9, tzinfo=UTC),
+        ),
+        id="older1234",
+    )
+    newer = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/newer",
+            source_type=SourceType.WEB,
+            now=datetime(2026, 5, 3, 10, tzinfo=UTC),
+        ),
+        id="newer1234",
+    )
+    repo.save(older)
+    repo.save(newer)
+
+    found = service.latest_item(user_id="telegram:123")
+
+    assert found.id == newer.id
+    assert found.id != older.id
 
 
 @pytest.mark.asyncio
