@@ -78,6 +78,23 @@ def test_context_default_extended_limit_is_12000_chars() -> None:
     assert context["extracted_text"] == "x" * 12_000
 
 
+def test_enrichment_prompt_requests_short_display_summary() -> None:
+    item = _item()
+    context = build_request_context(
+        item=item,
+        extracted=ExtractedContent(
+            title="Short Summary Source",
+            text="Useful source text.",
+            metadata={},
+        ),
+    )
+
+    prompt = build_enrichment_prompt(context)
+
+    assert "summary must be 1-2 short sentences" in prompt
+    assert "suggested_next_action must be short" in prompt
+
+
 def test_validate_learning_brief_rejects_missing_keys() -> None:
     with pytest.raises(AIProviderError) as error:
         validate_learning_brief({"title": "Only title"}, provider="gemini", model="model")

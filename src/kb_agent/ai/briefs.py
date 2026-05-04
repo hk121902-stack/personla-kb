@@ -105,7 +105,10 @@ def build_enrichment_prompt(context: dict[str, Any]) -> str:
     return (
         "Create a concise learning brief for this saved item. "
         "Return JSON only using the provided schema fields. "
-        "Use the source content, but preserve the user's intent from their note.\n\n"
+        "Use the source content, but preserve the user's intent from their note. "
+        "The summary must be 1-2 short sentences for Telegram display. "
+        "The suggested_next_action must be short, concrete, and action-oriented. "
+        "Key takeaways may contain deeper detail for the details view.\n\n"
         f"Context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}"
     )
 
