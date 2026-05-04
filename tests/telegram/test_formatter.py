@@ -274,6 +274,17 @@ def test_format_archive_recommendations_is_html_compact() -> None:
     assert "https://example.com/brief" not in text
 
 
+def test_format_archive_recommendations_uses_non_url_label_when_title_missing() -> None:
+    item = replace(_item(), id="7f3a9b8c1234", title="")
+    recommendation = ArchiveRecommendation(item=item, reason="old_low_priority")
+
+    text = format_archive_recommendations([recommendation])
+
+    assert "<b>kb_7f3a</b>" in text
+    assert "ID: kb_7f3a" in text
+    assert "https://example.com/brief" not in text
+
+
 def test_format_learning_brief_is_compact_html_card() -> None:
     text = format_learning_brief(_item())
 

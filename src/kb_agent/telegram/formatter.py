@@ -237,12 +237,13 @@ def format_archive_recommendations(
     lines = ["<b>Archive recommendations</b>"]
     for recommendation in recommendations:
         item = recommendation.item
-        title = item.title or item.url
         alias = _archive_item_alias(item, alias_for_item=alias_for_item)
+        title = item.title.strip() if item.title else ""
+        label = title or alias or "Saved item"
         lines.extend(
             [
                 "",
-                f"<b>{_html(title)}</b>",
+                f"<b>{_html(label)}</b>",
                 f"ID: {_html(alias)}",
                 f"Reason: {_html(recommendation.reason)}",
             ],
