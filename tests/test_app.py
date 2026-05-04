@@ -70,11 +70,11 @@ class FakeDigestService:
 
     def daily(self, *, user_id: str) -> Digest:
         self.daily_user_ids.append(user_id)
-        return Digest(text="Daily body", items=[])
+        return Digest(text="Daily body", items=[], item_aliases={}, kind="today")
 
     def weekly(self, *, user_id: str) -> Digest:
         self.weekly_user_ids.append(user_id)
-        return Digest(text="Weekly body", items=[])
+        return Digest(text="Weekly body", items=[], item_aliases={}, kind="week")
 
 
 def test_register_digest_jobs_adds_daily_and_weekly_cron_jobs() -> None:
@@ -132,13 +132,13 @@ async def test_registered_digest_callback_sends_digest_message() -> None:
     assert application.bot.messages == [
         {
             "chat_id": "123",
-            "text": "Daily body",
+            "text": "<b>Daily tiny nudge</b>",
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
         },
         {
             "chat_id": "123",
-            "text": "Weekly body",
+            "text": "<b>Weekly synthesis</b>",
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
         },
