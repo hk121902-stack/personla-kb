@@ -122,11 +122,11 @@ def format_retrieval_response(
             lines.append(
                 _compact_item_card(
                     item,
-                    alias=aliases.get(item.id, alias_for_item_id(item.id)),
+                    alias=_item_alias(item, aliases),
                 ),
             )
             lines.append("")
-        first_alias = aliases.get(matches[0].id, alias_for_item_id(matches[0].id))
+        first_alias = _item_alias(matches[0], aliases)
         lines.append(
             f'Need more? Reply "details" to an item, or send details {_html(first_alias)}.',
         )
@@ -137,7 +137,7 @@ def format_retrieval_response(
     lines = ["<b>From your knowledge base</b>", _html(answer), "", "<b>Sources</b>"]
     if matches:
         for item in matches:
-            alias = aliases.get(item.id, alias_for_item_id(item.id))
+            alias = _item_alias(item, aliases)
             lines.append(f"- {_html(alias)}: {_title_link(item.title or item.url, item.url)}")
     else:
         lines.append("- No strong saved source match.")
@@ -145,7 +145,7 @@ def format_retrieval_response(
     if extra_context:
         lines.extend(["", "<b>Extra context</b>", _html(_compact_summary(extra_context))])
     if matches:
-        first_alias = aliases.get(matches[0].id, alias_for_item_id(matches[0].id))
+        first_alias = _item_alias(matches[0], aliases)
         lines.extend(
             [
                 "",
@@ -153,6 +153,16 @@ def format_retrieval_response(
             ],
         )
     return "\n".join(lines)
+
+
+def _item_alias(item: SavedItem, aliases: dict[str, str]) -> str:
+    alias = aliases.get(item.id)
+    if alias:
+        return alias
+    try:
+        return alias_for_item_id(item.id)
+    except ValueError:
+        return item.id
 
 
 def _compact_item_card(item: SavedItem, *, alias: str) -> str:

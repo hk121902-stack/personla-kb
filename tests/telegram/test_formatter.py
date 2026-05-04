@@ -168,6 +168,33 @@ def test_format_retrieval_response_ask_mode_is_short_answer_with_sources() -> No
     assert "Extra context" not in text
 
 
+def test_format_retrieval_response_uses_provided_alias_for_non_hex_ids() -> None:
+    item = replace(
+        _item(),
+        id="item-a",
+        title="Imported Item",
+        summary="Imported summary. Hidden second sentence.",
+    )
+    response = type(
+        "Response",
+        (),
+        {
+            "question": "imported",
+            "answer": "Imported answer. Hidden second sentence.",
+            "matches": [item],
+            "item_aliases": {item.id: "kb_custom"},
+            "extra_context": "",
+            "text": "legacy",
+        },
+    )()
+
+    show_text = format_retrieval_response(response, mode="show", query="imported")
+    ask_text = format_retrieval_response(response, mode="ask")
+
+    assert "kb_custom" in show_text
+    assert "kb_custom" in ask_text
+
+
 def test_format_daily_digest_escapes_legacy_text() -> None:
     digest = type("Digest", (), {"text": "Daily <digest> & notes"})()
 
