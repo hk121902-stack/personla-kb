@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from html import escape
 from typing import Protocol
+from urllib.parse import urlparse
 
 from kb_agent.core.aliases import alias_for_item_id
 from kb_agent.core.archive_review import ArchiveRecommendation
@@ -12,20 +14,74 @@ class TextResult(Protocol):
     text: str
 
 
+_SUMMARY_SENTENCE_LIMIT = 1
+_SUMMARY_CHAR_LIMIT = 220
+_TAG_LIMIT = 5
+
+
+def _html(text: object) -> str:
+    return escape(str(text), quote=True)
+
+
+def _valid_link(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _title_link(title: str, url: str) -> str:
+    safe_title = _html(title or url)
+    if _valid_link(url):
+        return f'<a href="{_html(url)}">{safe_title}</a>'
+    return safe_title
+
+
+def _compact_summary(text: str) -> str:
+    normalized = " ".join(text.split())
+    if not normalized:
+        return ""
+
+    pieces = []
+    for sentence in normalized.replace("? ", "?. ").replace("! ", "!. ").split(". "):
+        cleaned = sentence.strip()
+        if not cleaned:
+            continue
+        if not cleaned.endswith((".", "?", "!")):
+            cleaned = f"{cleaned}."
+        pieces.append(cleaned)
+        if len(pieces) >= _SUMMARY_SENTENCE_LIMIT:
+            break
+
+    compact = " ".join(pieces) if pieces else normalized
+    if len(compact) > _SUMMARY_CHAR_LIMIT:
+        compact = compact[: _SUMMARY_CHAR_LIMIT - 1].rstrip() + "…"
+    return compact
+
+
+def _tag_line(tags: Sequence[str]) -> str:
+    selected = [tag for tag in tags if tag.strip()][:_TAG_LIMIT]
+    if not selected:
+        return "Tags: none"
+    return "Tags: " + ", ".join(_html(tag) for tag in selected)
+
+
+def _detail_hint(alias: str) -> str:
+    return f'Need more? Reply "details" or send details {_html(alias)}.'
+
+
 def format_save_confirmation(item: SavedItem, *, alias: str | None = None) -> str:
     title = item.title or item.url
-    tags = ", ".join(item.tags) if item.tags else "none"
     alias = alias or alias_for_item_id(item.id)
-    return "\n".join(
-        [
-            f"Saved: {title}",
-            f"ID: {alias}",
-            f"URL: {item.url}",
-            f"Tags: {tags}",
-            f"Priority: {item.priority.value}",
-            f"Status: {item.status.value}",
-        ],
-    )
+    summary = _compact_summary(item.summary or item.user_note or title)
+    lines = [
+        f"<b>{_title_link(title, item.url)}</b>",
+        f"ID: {_html(alias)}",
+        _tag_line(item.tags),
+        f"Priority: {_html(item.priority.value)}",
+    ]
+    if summary:
+        lines.extend(["", _html(summary)])
+    lines.extend(["", _detail_hint(alias)])
+    return "\n".join(lines)
 
 
 def format_needs_text_prompt(item: SavedItem) -> str:
@@ -80,27 +136,51 @@ def format_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:
         return format_save_confirmation(item, alias=alias)
 
     alias = alias or alias_for_item_id(item.id)
-    lines = [
-        f"Learning brief: {brief.title}",
-        f"ID: {alias}",
-        "",
-        "Summary:",
-        brief.summary,
-        "",
-        "Key takeaways:",
-    ]
-    lines.extend(f"- {takeaway}" for takeaway in brief.key_takeaways)
-    lines.extend(
+    summary = _compact_summary(brief.summary)
+    return "\n".join(
         [
+            f"<b>{_title_link(brief.title, item.url)}</b>",
+            f"ID: {_html(alias)}",
+            _tag_line(brief.tags),
+            f"Priority: {_html(item.priority.value)} · {_html(brief.estimated_time_minutes)} min",
             "",
-            "Why it matters:",
-            brief.why_it_matters,
+            _html(summary),
             "",
-            f"Time: {brief.estimated_time_minutes} min",
-            f"Next: {brief.suggested_next_action}",
+            _detail_hint(alias),
         ],
     )
-    return "\n".join(lines)
+
+
+def format_item_details(item: SavedItem, *, alias: str | None = None) -> str:
+    alias = alias or alias_for_item_id(item.id)
+    brief = item.learning_brief
+    title = brief.title if brief is not None else item.title or item.url
+    summary = brief.summary if brief is not None else item.summary
+    lines = [
+        "<b>Details</b>",
+        f"<b>{_title_link(title, item.url)}</b>",
+        f"ID: {_html(alias)}",
+        _tag_line(brief.tags if brief is not None else item.tags),
+        f"Priority: {_html(item.priority.value)}",
+        f"Source: {_html(item.url)}",
+        "",
+        "<b>Summary</b>",
+        _html(summary or title),
+    ]
+    if brief is not None:
+        lines.extend(["", "<b>Key takeaways:</b>"])
+        lines.extend(f"- {_html(takeaway)}" for takeaway in brief.key_takeaways)
+        lines.extend(
+            [
+                "",
+                "<b>Why it matters:</b>",
+                _html(brief.why_it_matters),
+                "",
+                f"Time: {_html(brief.estimated_time_minutes)} min",
+                f"Next: {_html(brief.suggested_next_action)}",
+            ],
+        )
+    return "\n".join(line for line in lines if line != "")
 
 
 def format_pending_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:

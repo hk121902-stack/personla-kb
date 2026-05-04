@@ -6,6 +6,7 @@ from kb_agent.core.models import AIStatus, LearningBrief, Priority, SavedItem, S
 from kb_agent.telegram.formatter import (
     format_ai_status,
     format_enrichment_retry_message,
+    format_item_details,
     format_learning_brief,
     format_needs_text_prompt,
     format_pending_learning_brief,
@@ -21,8 +22,12 @@ def _brief() -> LearningBrief:
         generated_at=datetime(2026, 5, 3, 10, 0, tzinfo=UTC),
         title="Learning Brief",
         topic="ai",
-        tags=["gemini"],
-        summary="Summary text.",
+        tags=["gemini", "claude", "agents", "repos", "costs", "extra"],
+        summary=(
+            "This is a long summary sentence about a useful saved item. "
+            "This second sentence should be hidden from compact Telegram cards. "
+            "This third sentence should only appear in details."
+        ),
         key_takeaways=["Takeaway one.", "Takeaway two."],
         why_it_matters="It matters.",
         estimated_time_minutes=20,
@@ -62,11 +67,12 @@ def test_save_confirmation_is_compact() -> None:
 
     text = format_save_confirmation(item)
 
-    assert "Saved: RAG Notes" in text
+    assert text.startswith('<b><a href="https://example.com/rag">RAG Notes</a></b>')
     assert "ID: kb_" in text
     assert "Tags: rag, retrieval" in text
     assert "Priority: high" in text
-    assert "Status: ready" in text
+    assert "Status: ready" not in text
+    assert 'Need more? Reply "details" or send details kb_' in text
 
 
 def test_needs_text_prompt_tells_user_to_save_note() -> None:
@@ -86,14 +92,47 @@ def test_needs_text_prompt_tells_user_to_save_note() -> None:
     )
 
 
-def test_format_learning_brief_includes_alias_and_fields() -> None:
+def test_format_learning_brief_is_compact_html_card() -> None:
     text = format_learning_brief(_item())
 
-    assert "Learning brief: Learning Brief" in text
+    assert text.startswith('<b><a href="https://example.com/brief">Learning Brief</a></b>')
+    assert "ID: kb_7f3a" in text
+    assert "Tags: gemini, claude, agents, repos, costs" in text
+    assert "Priority: unset · 20 min" in text
+    assert "This second sentence should be hidden" not in text
+    assert "Key takeaways:" not in text
+    assert 'Need more? Reply "details" or send details kb_7f3a.' in text
+
+
+def test_format_learning_brief_escapes_html() -> None:
+    item = replace(
+        _item(),
+        title='Use <script> & "quotes"',
+        url="https://example.com/?a=1&b=2",
+        learning_brief=replace(
+            _brief(),
+            title='Use <script> & "quotes"',
+            summary="A <dangerous> summary & note.",
+            tags=["a&b"],
+        ),
+    )
+
+    text = format_learning_brief(item)
+
+    assert "&lt;script&gt;" in text
+    assert "A &lt;dangerous&gt; summary &amp; note." in text
+    assert "https://example.com/?a=1&amp;b=2" in text
+
+
+def test_format_item_details_includes_full_brief() -> None:
+    text = format_item_details(_item())
+
+    assert "<b>Details</b>" in text
     assert "ID: kb_7f3a" in text
     assert "Key takeaways:" in text
-    assert "Time: 20 min" in text
-    assert "Next: Try it." in text
+    assert "- Takeaway one." in text
+    assert "Why it matters:" in text
+    assert "Source: https://example.com/brief" in text
 
 
 def test_format_pending_learning_brief_includes_alias() -> None:
