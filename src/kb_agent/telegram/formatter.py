@@ -159,6 +159,12 @@ def _item_alias(item: SavedItem, aliases: dict[str, str]) -> str:
     alias = aliases.get(item.id)
     if alias:
         return alias
+    return _alias_or_item_id(item)
+
+
+def _alias_or_item_id(item: SavedItem, alias: str | None = None) -> str:
+    if alias:
+        return alias
     try:
         return alias_for_item_id(item.id)
     except ValueError:
@@ -288,7 +294,7 @@ def format_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:
 
 
 def format_item_details(item: SavedItem, *, alias: str | None = None) -> str:
-    alias = alias or alias_for_item_id(item.id)
+    alias = _alias_or_item_id(item, alias)
     brief = item.learning_brief
     title = brief.title if brief is not None else item.title or item.url
     summary = brief.summary if brief is not None else item.summary

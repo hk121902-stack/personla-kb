@@ -688,6 +688,67 @@ async def test_handler_sends_details_from_replied_message_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handler_sends_details_from_replied_raw_item_id() -> None:
+    class RecordingKnowledge(FakeKnowledge):
+        def __init__(self) -> None:
+            super().__init__()
+            self.requested_refs: list[str] = []
+
+        async def get_item(self, *, user_id, item_ref):
+            self.requested_refs.append(item_ref)
+            return replace(_saved_item(title="Raw ID Details"), id=item_ref)
+
+        async def latest_item(self, *, user_id):
+            raise AssertionError("reply details should not fall back to latest")
+
+    knowledge = RecordingKnowledge()
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=knowledge,
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="details",
+        reply=replies.append,
+        reply_to_text="<b>Saved Item</b>\nID: item-a",
+    )
+
+    assert knowledge.requested_refs == ["item-a"]
+    assert "<b>Details</b>" in replies[0]
+    assert "Raw ID Details" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_reply_details_without_id_does_not_use_latest_item() -> None:
+    class NoLatestKnowledge(FakeKnowledge):
+        async def latest_item(self, *, user_id):
+            raise AssertionError("reply details should not fall back to latest")
+
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=NoLatestKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="details",
+        reply=replies.append,
+        reply_to_text="Saved Item without a displayed identifier",
+    )
+
+    assert replies == [
+        "I could not identify the item in that reply. Send details &lt;item_id&gt; instead.",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_handler_plain_details_uses_latest_item() -> None:
     replies = []
     handler = TelegramMessageHandler(
@@ -704,6 +765,7 @@ async def test_handler_plain_details_uses_latest_item() -> None:
     )
 
     assert "Latest Item" in replies[0]
+    assert "Need a different one?" in replies[0]
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,7 @@ import asyncio
 import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from html import unescape
 from inspect import isawaitable
 from types import SimpleNamespace
 from typing import Any
@@ -49,7 +50,13 @@ _ARCHIVE_REVIEW_UNAVAILABLE = "Archive review is not available right now."
 _ARCHIVE_MISSING_ID = "Tell me which item to archive, like: archive &lt;item_id&gt;."
 _ARCHIVE_NOT_FOUND = "I could not find that saved item."
 _ENRICHMENT_RETRY_MESSAGE = "Saved with basic enrichment. AI brief is pending retry."
-_ITEM_ID_RE = re.compile(r"\bID:\s*(kb_[a-z0-9]+)\b", re.IGNORECASE)
+_DETAILS_REPLY_MISSING_ID = (
+    "I could not identify the item in that reply. Send details &lt;item_id&gt; instead."
+)
+_DETAILS_LATEST_HINT = (
+    'Need a different one? Reply "details" to an item, or send details &lt;item_id&gt;.'
+)
+_ITEM_ID_RE = re.compile(r"(?im)^ID:\s*([^\s<]+)")
 
 
 class TelegramMessageHandler:
@@ -220,6 +227,9 @@ class TelegramMessageHandler:
         item_ref = command.item_ref.strip()
         if not item_ref and reply_to_text:
             item_ref = _item_ref_from_text(reply_to_text)
+            if not item_ref:
+                await _send(reply, _DETAILS_REPLY_MISSING_ID)
+                return
 
         try:
             if item_ref:
@@ -232,7 +242,10 @@ class TelegramMessageHandler:
             await _send(reply, "I could not find that saved item.")
             return
 
-        await _send(reply, format_item_details(item, alias=self._item_alias(item)))
+        message = format_item_details(item, alias=self._item_alias(item))
+        if not item_ref:
+            message = f"{message}\n\n{_DETAILS_LATEST_HINT}"
+        await _send(reply, message)
 
     async def _handle_digest(
         self,
@@ -452,7 +465,7 @@ def _item_ref_from_text(text: str) -> str:
     match = _ITEM_ID_RE.search(text)
     if match is None:
         return ""
-    return match.group(1)
+    return unescape(match.group(1).strip())
 
 
 async def _send(reply: Reply, text: str) -> None:
