@@ -161,8 +161,17 @@ class RecordingTelegramHandler:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
-    async def handle_text(self, *, user_id: str, text: str, reply) -> None:
-        self.calls.append({"user_id": user_id, "text": text, "reply": reply})
+    async def handle_text(
+        self,
+        *,
+        user_id: str,
+        text: str,
+        reply,
+        reply_to_text: str | None = None,
+    ) -> None:
+        self.calls.append(
+            {"user_id": user_id, "text": text, "reply_to_text": reply_to_text},
+        )
         await reply("handled")
 
 
@@ -170,9 +179,11 @@ class RecordingMessage:
     def __init__(self, text: str) -> None:
         self.text = text
         self.replies: list[str] = []
+        self.reply_kwargs: dict[str, object] = {}
 
-    async def reply_text(self, text: str) -> None:
+    async def reply_text(self, text: str, **kwargs) -> None:
         self.replies.append(text)
+        self.reply_kwargs = kwargs
 
 
 def _text_update(*, chat_id: int, text: str = "hello"):
@@ -227,9 +238,22 @@ async def test_application_processes_allowed_chat() -> None:
     await _message_callback(application)(update, None)
 
     assert handler.calls == [
-        {"user_id": "telegram:123", "text": "hello", "reply": message.reply_text},
+        {"user_id": "telegram:123", "text": "hello", "reply_to_text": None},
     ]
     assert message.replies == ["handled"]
+
+
+@pytest.mark.asyncio
+async def test_application_replies_with_html_parse_mode() -> None:
+    handler = RecordingTelegramHandler()
+    application = build_application(handler, "token", allowed_chat_id="123")
+    update, message = _text_update(chat_id=123, text="hello")
+
+    await _message_callback(application)(update, None)
+
+    assert message.replies == ["handled"]
+    assert message.reply_kwargs["parse_mode"] == "HTML"
+    assert message.reply_kwargs["disable_web_page_preview"] is True
 
 
 @pytest.mark.asyncio
@@ -241,7 +265,7 @@ async def test_application_processes_any_chat_without_allowed_chat_config() -> N
     await _message_callback(application)(update, None)
 
     assert handler.calls == [
-        {"user_id": "telegram:999", "text": "hello", "reply": message.reply_text},
+        {"user_id": "telegram:999", "text": "hello", "reply_to_text": None},
     ]
     assert message.replies == ["handled"]
 

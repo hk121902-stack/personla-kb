@@ -65,7 +65,14 @@ class TelegramMessageHandler:
         self.ai_router = ai_router
         self.ai_sync_wait_seconds = ai_sync_wait_seconds
 
-    async def handle_text(self, *, user_id: str, text: str, reply: Reply) -> None:
+    async def handle_text(
+        self,
+        *,
+        user_id: str,
+        text: str,
+        reply: Reply,
+        reply_to_text: str | None = None,
+    ) -> None:
         command = parse_message(text)
 
         if isinstance(command, SaveCommand):
@@ -362,10 +369,19 @@ def build_application(
             return
 
         user_id = _chat_scoped_user_id(update)
+
+        async def html_reply(text: str) -> None:
+            await update.message.reply_text(
+                text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+
         await handler.handle_text(
             user_id=user_id,
             text=update.message.text,
-            reply=update.message.reply_text,
+            reply=html_reply,
+            reply_to_text=_reply_to_text(update),
         )
 
     application = Application.builder().token(token).build()
@@ -375,6 +391,19 @@ def build_application(
 
 def _chat_scoped_user_id(update: Update) -> str:
     return f"telegram:{update.effective_chat.id}"
+
+
+def _reply_to_text(update: Update) -> str | None:
+    message = update.message
+    if message is None:
+        return None
+    reply_to_message = getattr(message, "reply_to_message", None)
+    if reply_to_message is None:
+        return None
+    text = getattr(reply_to_message, "text", None)
+    if not isinstance(text, str):
+        return None
+    return text
 
 
 async def _send(reply: Reply, text: str) -> None:
