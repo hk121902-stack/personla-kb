@@ -256,6 +256,8 @@ Expected: PASS.
 
 - [ ] **Step 5: Write failing service tests**
 
+Add `SourceType` to the existing `kb_agent.core.models` import in `tests/core/test_knowledge_service.py`.
+
 Add tests to `tests/core/test_knowledge_service.py`:
 
 ```python
@@ -286,8 +288,26 @@ def test_latest_item_returns_latest_user_item(tmp_path) -> None:
         ai_provider=HeuristicAIProvider(),
         clock=FixedClock(),
     )
-    older = service.create_link(user_id="telegram:123", url="https://example.com/older")
-    newer = service.create_link(user_id="telegram:123", url="https://example.com/newer")
+    older = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/older",
+            source_type=SourceType.WEB,
+            now=datetime(2026, 5, 3, 9, tzinfo=UTC),
+        ),
+        id="older1234",
+    )
+    newer = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/newer",
+            source_type=SourceType.WEB,
+            now=datetime(2026, 5, 3, 10, tzinfo=UTC),
+        ),
+        id="newer1234",
+    )
+    repo.save(older)
+    repo.save(newer)
 
     found = service.latest_item(user_id="telegram:123")
 
