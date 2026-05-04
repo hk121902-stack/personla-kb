@@ -167,7 +167,12 @@ def _build_digest_callback(
             text = format_daily_digest(digest_service.daily(user_id=job.user_id))
         else:
             text = format_weekly_digest(digest_service.weekly(user_id=job.user_id))
-        await application.bot.send_message(chat_id=chat_id, text=text)
+        await application.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
 
     return send_digest
 

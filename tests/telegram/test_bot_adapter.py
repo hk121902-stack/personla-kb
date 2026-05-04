@@ -176,8 +176,13 @@ class RecordingTelegramHandler:
 
 
 class RecordingMessage:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, *, reply_to_text: str | None = None) -> None:
         self.text = text
+        self.reply_to_message = (
+            type("ReplyToMessage", (), {"text": reply_to_text})()
+            if reply_to_text is not None
+            else None
+        )
         self.replies: list[str] = []
         self.reply_kwargs: dict[str, object] = {}
 
@@ -186,8 +191,8 @@ class RecordingMessage:
         self.reply_kwargs = kwargs
 
 
-def _text_update(*, chat_id: int, text: str = "hello"):
-    message = RecordingMessage(text)
+def _text_update(*, chat_id: int, text: str = "hello", reply_to_text: str | None = None):
+    message = RecordingMessage(text, reply_to_text=reply_to_text)
     update = type(
         "Update",
         (),
@@ -273,6 +278,27 @@ async def test_application_replies_with_html_parse_mode() -> None:
     assert message.replies == ["handled"]
     assert message.reply_kwargs["parse_mode"] == "HTML"
     assert message.reply_kwargs["disable_web_page_preview"] is True
+
+
+@pytest.mark.asyncio
+async def test_application_passes_reply_to_message_text() -> None:
+    handler = RecordingTelegramHandler()
+    application = build_application(handler, "token", allowed_chat_id="123")
+    update, _message = _text_update(
+        chat_id=123,
+        text="details",
+        reply_to_text="Original saved text",
+    )
+
+    await _message_callback(application)(update, None)
+
+    assert handler.calls == [
+        {
+            "user_id": "telegram:123",
+            "text": "details",
+            "reply_to_text": "Original saved text",
+        },
+    ]
 
 
 @pytest.mark.asyncio

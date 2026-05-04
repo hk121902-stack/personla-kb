@@ -23,8 +23,8 @@ class FakeBot:
     def __init__(self) -> None:
         self.messages = []
 
-    async def send_message(self, *, chat_id: str, text: str) -> None:
-        self.messages.append({"chat_id": chat_id, "text": text})
+    async def send_message(self, *, chat_id: str, text: str, **kwargs) -> None:
+        self.messages.append({"chat_id": chat_id, "text": text, **kwargs})
 
 
 class FakeApplication:
@@ -125,9 +125,24 @@ async def test_registered_digest_callback_sends_digest_message() -> None:
         settings=settings,
     )
     await scheduler.jobs[0]["func"]()
+    await scheduler.jobs[1]["func"]()
 
     assert digest_service.daily_user_ids == ["telegram:123"]
-    assert application.bot.messages == [{"chat_id": "123", "text": "Daily body"}]
+    assert digest_service.weekly_user_ids == ["telegram:123"]
+    assert application.bot.messages == [
+        {
+            "chat_id": "123",
+            "text": "Daily body",
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        },
+        {
+            "chat_id": "123",
+            "text": "Weekly body",
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        },
+    ]
 
 
 def test_build_runtime_passes_configured_chat_id_to_application(monkeypatch) -> None:
