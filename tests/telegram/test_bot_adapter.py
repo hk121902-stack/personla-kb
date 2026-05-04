@@ -562,6 +562,12 @@ async def test_handler_reviews_archive_recommendations() -> None:
 async def test_handler_archives_item() -> None:
     replies = []
     knowledge = FakeKnowledge()
+
+    async def archive_unsafe_title(*, user_id, item_id):
+        knowledge.archived = (user_id, item_id)
+        return replace(_saved_item(title="Archived <Title> & More"), id=item_id, archived=True)
+
+    knowledge.archive_item = archive_unsafe_title
     handler = TelegramMessageHandler(
         knowledge=knowledge,
         retrieval=FakeRetrieval(),
@@ -572,7 +578,22 @@ async def test_handler_archives_item() -> None:
     await handler.handle_text(user_id="telegram:123", text="archive item123", reply=replies.append)
 
     assert knowledge.archived == ("telegram:123", "item123")
-    assert replies == ["Archived: Archived Title"]
+    assert replies == ["Archived: Archived &lt;Title&gt; &amp; More"]
+
+
+@pytest.mark.asyncio
+async def test_handler_prompts_for_missing_archive_id_with_html_safe_placeholder() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(user_id="telegram:123", text="archive", reply=replies.append)
+
+    assert replies == ["Tell me which item to archive, like: archive &lt;item_id&gt;."]
 
 
 @pytest.mark.asyncio
@@ -744,6 +765,28 @@ async def test_handler_selects_model() -> None:
 
     assert router.selected == "gemini:lite"
     assert replies == ["Model selected: gemini:lite"]
+
+
+@pytest.mark.asyncio
+async def test_handler_escapes_selected_model_reply() -> None:
+    replies = []
+    router = FakeAIRouter()
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=router,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="model gemini:<lite>&",
+        reply=replies.append,
+    )
+
+    assert router.selected == "gemini:<lite>&"
+    assert replies == ["Model selected: gemini:&lt;lite&gt;&amp;"]
 
 
 @pytest.mark.asyncio

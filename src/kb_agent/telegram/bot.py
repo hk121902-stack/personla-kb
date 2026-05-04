@@ -19,6 +19,7 @@ from kb_agent.telegram.formatter import (
     format_learning_brief,
     format_needs_text_prompt,
     format_pending_learning_brief,
+    format_plain_text,
     format_retrieval_response,
     format_save_confirmation,
     format_weekly_digest,
@@ -279,10 +280,10 @@ class TelegramMessageHandler:
         try:
             self.ai_router.select_model(command.provider_model)
         except ValueError as error:
-            await _send(reply, str(error))
+            await _send(reply, format_plain_text(str(error)))
             return
 
-        await _send(reply, f"Model selected: {command.provider_model}")
+        await _send(reply, format_plain_text(f"Model selected: {command.provider_model}"))
 
     async def _handle_review_archive(self, *, user_id: str, reply: Reply) -> None:
         if self.archive_review_service is None:
@@ -308,7 +309,7 @@ class TelegramMessageHandler:
         reply: Reply,
     ) -> None:
         if not command.item_id:
-            await _send(reply, _ARCHIVE_MISSING_ID)
+            await _send(reply, format_plain_text(_ARCHIVE_MISSING_ID))
             return
 
         try:
@@ -320,7 +321,7 @@ class TelegramMessageHandler:
             return
 
         title = item.title or item.url
-        await _send(reply, f"Archived: {title}")
+        await _send(reply, format_plain_text(f"Archived: {title}"))
 
     async def _handle_show(
         self,

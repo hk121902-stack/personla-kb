@@ -23,6 +23,10 @@ def _html(text: object) -> str:
     return escape(str(text), quote=True)
 
 
+def format_plain_text(text: object) -> str:
+    return _html(text)
+
+
 def _valid_link(url: str) -> bool:
     parsed = urlparse(url)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
@@ -85,19 +89,20 @@ def format_save_confirmation(item: SavedItem, *, alias: str | None = None) -> st
 
 
 def format_needs_text_prompt(item: SavedItem) -> str:
+    url = _html(item.url)
     return "\n".join(
         [
-            f"I saved the link, but could not extract text from: {item.url}",
+            f"I saved the link, but could not extract text from: {url}",
             "Send the useful text and I will use it as saved content: "
-            f"save {item.url} note: <text>",
+            f"save {url} note: &lt;text&gt;",
         ],
     )
 
 
 def format_retrieval_response(response: TextResult | str) -> str:
     if isinstance(response, str):
-        return response
-    return response.text
+        return format_plain_text(response)
+    return format_plain_text(response.text)
 
 
 def format_daily_digest(digest: TextResult | str) -> str:
@@ -126,7 +131,9 @@ def format_archive_recommendations(
         title = item.title or item.url
         alias = alias_for_item(item) if alias_for_item is not None else None
         alias = alias or alias_for_item_id(item.id)
-        lines.append(f"- {alias}: {title} ({recommendation.reason})")
+        lines.append(
+            f"- {_html(alias)}: {_html(title)} ({_html(recommendation.reason)})",
+        )
     return "\n".join(lines)
 
 
@@ -187,8 +194,8 @@ def format_pending_learning_brief(item: SavedItem, *, alias: str | None = None) 
     alias = alias or alias_for_item_id(item.id)
     return "\n".join(
         [
-            f"Saved: {item.title or item.url}",
-            f"ID: {alias}",
+            f"Saved: {_html(item.title or item.url)}",
+            f"ID: {_html(alias)}",
             "Preparing learning brief...",
         ],
     )
@@ -199,29 +206,30 @@ def format_enrichment_retry_message(item: SavedItem, *, alias: str | None = None
     return "\n".join(
         [
             "Saved with basic enrichment. AI brief is pending retry.",
-            f"ID: {alias}",
+            f"ID: {_html(alias)}",
         ],
     )
 
 
 def format_ai_status(status, *, pending_retry_count: int) -> str:
     last_error = status.last_error or "none"
+    chain = " -> ".join(_html(provider) for provider in status.chain)
     return "\n".join(
         [
             "AI status",
-            f"Chain: {' -> '.join(status.chain)}",
-            f"Selected: {getattr(status, 'selected_model', '') or 'none'}",
-            f"Gemini model: {getattr(status, 'gemini_model', '') or 'none'}",
+            f"Chain: {chain}",
+            f"Selected: {_html(getattr(status, 'selected_model', '') or 'none')}",
+            f"Gemini model: {_html(getattr(status, 'gemini_model', '') or 'none')}",
             "Ollama: "
-            f"{getattr(status, 'ollama_base_url', '') or 'not configured'} "
-            f"({getattr(status, 'ollama_model', '') or 'none'})",
-            f"Pending retries: {pending_retry_count}",
-            f"Last error: {last_error}",
+            f"{_html(getattr(status, 'ollama_base_url', '') or 'not configured')} "
+            f"({_html(getattr(status, 'ollama_model', '') or 'none')})",
+            f"Pending retries: {_html(pending_retry_count)}",
+            f"Last error: {_html(last_error)}",
         ],
     )
 
 
 def _format_text_result(result: TextResult | str) -> str:
     if isinstance(result, str):
-        return result
-    return result.text
+        return format_plain_text(result)
+    return format_plain_text(result.text)
