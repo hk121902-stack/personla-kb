@@ -204,6 +204,25 @@ def _message_callback(application):
     return application.handlers[0][0].callback
 
 
+def _assert_compact_card(
+    text: str,
+    *,
+    title: str,
+    url: str = "https://example.com/rag",
+    alias: str | None = None,
+    tags: str = "saved",
+) -> None:
+    assert text.startswith(f'<b><a href="{url}">{title}</a></b>')
+    if alias is None:
+        assert "ID: kb_" in text
+        assert 'Need more? Reply "details" or send details kb_' in text
+    else:
+        assert f"ID: {alias}" in text
+        assert f'Need more? Reply "details" or send details {alias}.' in text
+    assert f"Tags: {tags}" in text
+    assert "Priority: unset" in text
+
+
 def test_chat_scoped_user_id_uses_chat_id_when_user_differs() -> None:
     update = type(
         "Update",
@@ -286,7 +305,8 @@ async def test_handler_saves_plain_link() -> None:
         reply=replies.append,
     )
 
-    assert "Saved: Saved Title" in replies[0]
+    _assert_compact_card(replies[0], title="Saved Title")
+    assert "Saved: Saved Title" not in replies[0]
 
 
 @pytest.mark.asyncio
@@ -318,7 +338,7 @@ async def test_handler_note_save_uses_split_enrichment_for_split_knowledge() -> 
     assert knowledge.enrich_saved_item_calls == [
         {"user_id": "telegram:123", "item_id": "7f3a9b8c1234"},
     ]
-    assert "Saved: Finished Brief" in replies[0]
+    _assert_compact_card(replies[0], title="Finished Brief", alias="kb_7f3a")
 
 
 @pytest.mark.asyncio
@@ -341,7 +361,7 @@ async def test_handler_replies_pending_then_follow_up_for_slow_save() -> None:
     await asyncio.sleep(0.02)
 
     assert replies[0] == "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief..."
-    assert "Saved: Finished Brief" in replies[1] or "Learning brief: Finished Brief" in replies[1]
+    _assert_compact_card(replies[1], title="Finished Brief", alias="kb_7f3a")
 
 
 @pytest.mark.asyncio
@@ -387,18 +407,11 @@ async def test_handler_follow_up_prompts_for_note_when_slow_enrichment_needs_tex
     await asyncio.sleep(0.02)
 
     assert replies[0] == "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief..."
-    assert replies[1] == (
-        "Saved: https://example.com/rag\n"
-        "ID: kb_7f3a\n"
-        "URL: https://example.com/rag\n"
-        "Tags: saved\n"
-        "Priority: unset\n"
-        "Status: needs_text"
-    )
+    _assert_compact_card(replies[1], title="https://example.com/rag", alias="kb_7f3a")
     assert replies[2] == (
         "I saved the link, but could not extract text from: https://example.com/rag\n"
         "Send the useful text and I will use it as saved content: "
-        "save https://example.com/rag note: <text>"
+        "save https://example.com/rag note: &lt;text&gt;"
     )
 
 
@@ -420,17 +433,13 @@ async def test_handler_prompts_for_note_when_fast_split_enrichment_needs_text() 
         reply=replies.append,
     )
 
-    assert replies == [
-        "Saved: https://example.com/rag\n"
-        "ID: kb_7f3a\n"
-        "URL: https://example.com/rag\n"
-        "Tags: saved\n"
-        "Priority: unset\n"
-        "Status: needs_text",
+    assert len(replies) == 2
+    _assert_compact_card(replies[0], title="https://example.com/rag", alias="kb_7f3a")
+    assert replies[1] == (
         "I saved the link, but could not extract text from: https://example.com/rag\n"
         "Send the useful text and I will use it as saved content: "
-        "save https://example.com/rag note: <text>",
-    ]
+        "save https://example.com/rag note: &lt;text&gt;"
+    )
 
 
 @pytest.mark.asyncio
@@ -477,17 +486,14 @@ async def test_handler_prompts_for_note_when_saved_link_needs_text() -> None:
         reply=replies.append,
     )
 
-    assert replies == [
-        "Saved: https://example.com/rag\n"
-        f"ID: kb_{needs_text_item.id[:4]}\n"
-        "URL: https://example.com/rag\n"
-        "Tags: saved\n"
-        "Priority: unset\n"
-        "Status: needs_text",
+    alias = f"kb_{needs_text_item.id[:4]}"
+    assert len(replies) == 2
+    _assert_compact_card(replies[0], title="https://example.com/rag", alias=alias)
+    assert replies[1] == (
         "I saved the link, but could not extract text from: https://example.com/rag\n"
         "Send the useful text and I will use it as saved content: "
-        "save https://example.com/rag note: <text>",
-    ]
+        "save https://example.com/rag note: &lt;text&gt;"
+    )
 
 
 @pytest.mark.asyncio
@@ -716,8 +722,13 @@ async def test_handler_refreshes_item_by_alias() -> None:
 
     await handler.handle_text(user_id="telegram:123", text="refresh kb_7f3a", reply=replies.append)
 
-    assert "Learning brief: Learning Brief" in replies[0]
-    assert "ID: kb_7f3a" in replies[0]
+    _assert_compact_card(
+        replies[0],
+        title="Learning Brief",
+        alias="kb_7f3a",
+        tags="brief",
+    )
+    assert "Summary." in replies[0]
 
 
 @pytest.mark.asyncio
