@@ -147,7 +147,7 @@ class TelegramMessageHandler:
                     include_archived=command.include_archived,
                 ),
             )
-            await _send(reply, format_retrieval_response(response))
+            await _send(reply, format_retrieval_response(response, mode="ask"))
             return
 
         if isinstance(command, DetailsCommand):
@@ -379,7 +379,10 @@ class TelegramMessageHandler:
                 include_archived=False,
             ),
         )
-        await _send(reply, format_retrieval_response(response))
+        await _send(
+            reply,
+            format_retrieval_response(response, mode="show", query=command.query),
+        )
 
     def _item_alias(self, item: Any) -> str | None:
         repository = getattr(self.knowledge, "repository", None)

@@ -50,6 +50,10 @@ _EXPLANATION_WORDS = {"explain", "explanation", "why", "how", "context"}
 class RetrievalResponse:
     text: str
     matches: list[SavedItem]
+    question: str = ""
+    answer: str = ""
+    extra_context: str = ""
+    item_aliases: dict[str, str] | None = None
 
 
 class RetrievalService:
@@ -95,18 +99,26 @@ class RetrievalService:
             )
 
         extra_context = ""
-        if matches or _asks_for_explanation(question):
+        if _asks_for_explanation(question):
             extra_context = await self.ai_provider.synthesize_extra_context(question)
 
+        text = _format_response(
+            answer,
+            matches,
+            extra_context,
+            repository=self.repository,
+            user_id=user_id,
+        )
         return RetrievalResponse(
-            text=_format_response(
-                answer,
-                matches,
-                extra_context,
-                repository=self.repository,
-                user_id=user_id,
-            ),
+            text=text,
             matches=matches,
+            question=question,
+            answer=answer,
+            extra_context=extra_context,
+            item_aliases={
+                item.id: _item_alias(self.repository, user_id, item)
+                for item in matches
+            },
         )
 
 

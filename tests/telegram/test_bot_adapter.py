@@ -138,8 +138,34 @@ class FakeAIRouter:
 
 
 class FakeRetrieval:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
     async def answer(self, *, user_id, question, include_archived=False):
-        return type("Response", (), {"text": "From your knowledge base\nAnswer", "matches": []})()
+        self.calls.append(
+            {
+                "user_id": user_id,
+                "question": question,
+                "include_archived": include_archived,
+            },
+        )
+        item = replace(
+            _saved_item(title="RAG Search"),
+            id="7f3a9b8c1234",
+            summary="A compact result. A hidden second sentence.",
+        )
+        return type(
+            "Response",
+            (),
+            {
+                "question": question,
+                "answer": "Answer sentence. Hidden second sentence.",
+                "matches": [item],
+                "item_aliases": {item.id: "kb_7f3a"},
+                "extra_context": "",
+                "text": "legacy",
+            },
+        )()
 
 
 class FakeDigest:
@@ -533,9 +559,10 @@ async def test_handler_prompts_for_note_when_saved_link_needs_text() -> None:
 @pytest.mark.asyncio
 async def test_handler_answers_plain_question() -> None:
     replies = []
+    retrieval = FakeRetrieval()
     handler = TelegramMessageHandler(
         knowledge=FakeKnowledge(),
-        retrieval=FakeRetrieval(),
+        retrieval=retrieval,
         digest_service=None,
         archive_review_service=None,
     )
@@ -546,7 +573,77 @@ async def test_handler_answers_plain_question() -> None:
         reply=replies.append,
     )
 
-    assert replies == ["From your knowledge base\nAnswer"]
+    assert retrieval.calls == [
+        {
+            "user_id": "telegram:123",
+            "question": "what did I save about rag?",
+            "include_archived": False,
+        },
+    ]
+    assert "<b>From your knowledge base</b>" in replies[0]
+    assert "Answer sentence." in replies[0]
+    assert "Hidden second sentence" not in replies[0]
+    assert "<b>Sources</b>" in replies[0]
+    assert "- kb_7f3a: " in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_show_renders_compact_results() -> None:
+    replies = []
+    retrieval = FakeRetrieval()
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=retrieval,
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="show rag",
+        reply=replies.append,
+    )
+
+    assert retrieval.calls == [
+        {
+            "user_id": "telegram:123",
+            "question": "rag",
+            "include_archived": False,
+        },
+    ]
+    assert '<b>Found 1 item for "rag"</b>' in replies[0]
+    assert "RAG Search" in replies[0]
+    assert "Answer sentence" not in replies[0]
+    assert 'Need more? Reply "details" to an item, or send details kb_7f3a.' in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_find_renders_compact_results() -> None:
+    replies = []
+    retrieval = FakeRetrieval()
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=retrieval,
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="find rag",
+        reply=replies.append,
+    )
+
+    assert retrieval.calls == [
+        {
+            "user_id": "telegram:123",
+            "question": "rag",
+            "include_archived": False,
+        },
+    ]
+    assert '<b>Found 1 item for "rag"</b>' in replies[0]
+    assert "RAG Search" in replies[0]
+    assert "Answer sentence" not in replies[0]
 
 
 @pytest.mark.asyncio

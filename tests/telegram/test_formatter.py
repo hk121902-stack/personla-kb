@@ -106,7 +106,66 @@ def test_format_retrieval_response_escapes_html_fallbacks() -> None:
     response = type("Response", (), {"text": "From <kb> & notes"})()
 
     assert format_retrieval_response("A <raw> & text") == "A &lt;raw&gt; &amp; text"
-    assert format_retrieval_response(response) == "From &lt;kb&gt; &amp; notes"
+    assert format_retrieval_response(response) == (
+        "<b>From your knowledge base</b>\n"
+        "From &lt;kb&gt; &amp; notes.\n"
+        "\n"
+        "<b>Sources</b>\n"
+        "- No strong saved source match."
+    )
+
+
+def test_format_retrieval_response_show_mode_is_compact_list() -> None:
+    item = replace(
+        _item(),
+        id="7f3a9b8c1234",
+        title="Graphify + Claude Code",
+        tags=["claude-code", "repos"],
+        summary="A short summary. A hidden second sentence.",
+    )
+    response = type(
+        "Response",
+        (),
+        {
+            "question": "claude",
+            "answer": "Long synthesized answer that should not show.",
+            "matches": [item],
+            "item_aliases": {item.id: "kb_7f3a"},
+            "extra_context": "",
+            "text": "legacy",
+        },
+    )()
+
+    text = format_retrieval_response(response, mode="show", query="claude")
+
+    assert '<b>Found 1 item for "claude"</b>' in text
+    assert "Graphify + Claude Code" in text
+    assert "Long synthesized answer" not in text
+    assert 'Need more? Reply "details" to an item, or send details kb_7f3a.' in text
+
+
+def test_format_retrieval_response_ask_mode_is_short_answer_with_sources() -> None:
+    item = replace(_item(), id="7f3a9b8c1234", title="RAG Search")
+    response = type(
+        "Response",
+        (),
+        {
+            "question": "what did I save?",
+            "answer": "Sentence one. Sentence two. Sentence three should be hidden.",
+            "matches": [item],
+            "item_aliases": {item.id: "kb_7f3a"},
+            "extra_context": "",
+            "text": "legacy",
+        },
+    )()
+
+    text = format_retrieval_response(response, mode="ask")
+
+    assert "<b>From your knowledge base</b>" in text
+    assert "Sentence three should be hidden" not in text
+    assert "<b>Sources</b>" in text
+    assert "RAG Search" in text
+    assert "Extra context" not in text
 
 
 def test_format_daily_digest_escapes_legacy_text() -> None:

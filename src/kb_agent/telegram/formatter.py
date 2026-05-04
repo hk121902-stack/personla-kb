@@ -99,10 +99,73 @@ def format_needs_text_prompt(item: SavedItem) -> str:
     )
 
 
-def format_retrieval_response(response: TextResult | str) -> str:
+def format_retrieval_response(
+    response: TextResult | str,
+    *,
+    mode: str = "ask",
+    query: str = "",
+) -> str:
     if isinstance(response, str):
-        return format_plain_text(response)
-    return format_plain_text(response.text)
+        return _html(response)
+
+    matches = list(getattr(response, "matches", []))
+    if mode == "show":
+        query_text = query or getattr(response, "question", "")
+        count = len(matches)
+        noun = "item" if count == 1 else "items"
+        aliases = getattr(response, "item_aliases", {}) or {}
+        lines = [f'<b>Found {count} {noun} for "{_html(query_text)}"</b>']
+        if not matches:
+            return "\n".join([lines[0], "No strong saved source match."])
+        lines.append("")
+        for item in matches:
+            lines.append(
+                _compact_item_card(
+                    item,
+                    alias=aliases.get(item.id, alias_for_item_id(item.id)),
+                ),
+            )
+            lines.append("")
+        first_alias = aliases.get(matches[0].id, alias_for_item_id(matches[0].id))
+        lines.append(
+            f'Need more? Reply "details" to an item, or send details {_html(first_alias)}.',
+        )
+        return "\n".join(lines).strip()
+
+    aliases = getattr(response, "item_aliases", {}) or {}
+    answer = _compact_summary(getattr(response, "answer", "") or response.text)
+    lines = ["<b>From your knowledge base</b>", _html(answer), "", "<b>Sources</b>"]
+    if matches:
+        for item in matches:
+            alias = aliases.get(item.id, alias_for_item_id(item.id))
+            lines.append(f"- {_html(alias)}: {_title_link(item.title or item.url, item.url)}")
+    else:
+        lines.append("- No strong saved source match.")
+    extra_context = getattr(response, "extra_context", "")
+    if extra_context:
+        lines.extend(["", "<b>Extra context</b>", _html(_compact_summary(extra_context))])
+    if matches:
+        first_alias = aliases.get(matches[0].id, alias_for_item_id(matches[0].id))
+        lines.extend(
+            [
+                "",
+                f'Need more? Reply "details" to an item, or send details {_html(first_alias)}.',
+            ],
+        )
+    return "\n".join(lines)
+
+
+def _compact_item_card(item: SavedItem, *, alias: str) -> str:
+    title = item.title or item.url
+    summary = _compact_summary(item.summary or item.user_note or item.extracted_text or title)
+    return "\n".join(
+        [
+            f"<b>{_title_link(title, item.url)}</b>",
+            f"ID: {_html(alias)}",
+            _tag_line(item.tags),
+            _html(summary),
+        ],
+    )
 
 
 def format_daily_digest(digest: TextResult | str) -> str:

@@ -85,6 +85,48 @@ async def test_retrieval_sources_include_item_aliases(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_retrieval_response_carries_structured_answer_fields(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    repo.save(
+        ready_item_with_id(
+            "7f3a9b8c1234",
+            "https://example.com/active",
+            "RAG Search",
+            "semantic retrieval notes",
+        ),
+    )
+
+    response = await RetrievalService(repo, HeuristicAIProvider()).answer(
+        user_id="telegram:123",
+        question="What did I save about retrieval?",
+    )
+
+    assert response.question == "What did I save about retrieval?"
+    assert response.answer
+    assert response.extra_context == ""
+    assert response.item_aliases[response.matches[0].id] == "kb_7f3a"
+    assert response.matches[0].title == "RAG Search"
+
+
+@pytest.mark.asyncio
+async def test_retrieval_only_adds_extra_context_for_explanation_questions(tmp_path) -> None:
+    repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
+    repo.save(ready_item("https://example.com/active", "RAG Search", "semantic retrieval notes"))
+
+    plain = await RetrievalService(repo, HeuristicAIProvider()).answer(
+        user_id="telegram:123",
+        question="retrieval",
+    )
+    explanatory = await RetrievalService(repo, HeuristicAIProvider()).answer(
+        user_id="telegram:123",
+        question="why retrieval matters",
+    )
+
+    assert plain.extra_context == ""
+    assert explanatory.extra_context
+
+
+@pytest.mark.asyncio
 async def test_retrieval_can_include_archived(tmp_path) -> None:
     repo = SQLiteItemRepository(tmp_path / "kb.sqlite3")
     archived = ready_item(
