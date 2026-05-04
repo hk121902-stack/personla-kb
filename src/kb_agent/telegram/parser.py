@@ -62,6 +62,11 @@ class ReviewArchiveCommand:
 
 
 @dataclass(frozen=True)
+class DetailsCommand:
+    item_ref: str
+
+
+@dataclass(frozen=True)
 class ShowCommand:
     query: str
 
@@ -82,6 +87,7 @@ def parse_message(
     | ModelCommand
     | ArchiveCommand
     | ReviewArchiveCommand
+    | DetailsCommand
     | ShowCommand
     | ParseCommand
 ):
@@ -114,6 +120,14 @@ def parse_message(
         return ReviewArchiveCommand()
     if lowered == "archive" or lowered.startswith("archive "):
         return ArchiveCommand(item_id=_after_command(text))
+    if lowered == "details" or lowered.startswith("details "):
+        return DetailsCommand(item_ref=_after_command(text))
+    if lowered == "more" or lowered.startswith("more "):
+        return DetailsCommand(item_ref=_after_command(text))
+    if lowered == "expand" or lowered.startswith("expand "):
+        return DetailsCommand(item_ref=_after_command(text))
+    if lowered == "find" or lowered.startswith("find "):
+        return ShowCommand(query=_after_command(text))
     if lowered == "show" or lowered.startswith("show "):
         return ShowCommand(query=_after_command(text))
 

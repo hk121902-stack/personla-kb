@@ -3,6 +3,7 @@ from kb_agent.telegram.parser import (
     AIStatusCommand,
     ArchiveCommand,
     AskCommand,
+    DetailsCommand,
     DigestCommand,
     ModelCommand,
     ParseCommand,
@@ -96,6 +97,37 @@ def test_show_command() -> None:
 
     assert isinstance(command, ShowCommand)
     assert command.query == "vector databases"
+
+
+def test_details_command_with_item_ref() -> None:
+    command = parse_message("details kb_7f3a")
+
+    assert isinstance(command, DetailsCommand)
+    assert command.item_ref == "kb_7f3a"
+
+
+def test_plain_details_command_has_empty_ref() -> None:
+    command = parse_message("details")
+
+    assert isinstance(command, DetailsCommand)
+    assert command.item_ref == ""
+
+
+def test_more_and_expand_are_details_aliases() -> None:
+    more = parse_message("more")
+    expand = parse_message("expand kb_9c11")
+
+    assert isinstance(more, DetailsCommand)
+    assert more.item_ref == ""
+    assert isinstance(expand, DetailsCommand)
+    assert expand.item_ref == "kb_9c11"
+
+
+def test_find_command_reuses_show_command() -> None:
+    command = parse_message("find claude code")
+
+    assert isinstance(command, ShowCommand)
+    assert command.query == "claude code"
 
 
 def test_plain_question_becomes_ask_command() -> None:
