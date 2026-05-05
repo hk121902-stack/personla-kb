@@ -423,6 +423,22 @@ def test_format_learning_brief_is_compact_html_card() -> None:
     assert '<b>Need more?</b> Reply "details" or send details kb_7f3a.' in text
 
 
+def test_format_learning_brief_includes_compact_escaped_note() -> None:
+    item = replace(
+        _item(),
+        user_note='Use <raw> & "quoted" note. Hidden second sentence.',
+    )
+
+    text = format_learning_brief(item)
+
+    tags_index = text.index("<b>Tags:</b>")
+    note_index = text.index("<b>Note:</b>")
+    priority_index = text.index("<b>Priority:</b>")
+    assert tags_index < note_index < priority_index
+    assert '<b>Note:</b> Use &lt;raw&gt; &amp; &quot;quoted&quot; note.' in text
+    assert "Hidden second sentence" not in text
+
+
 def test_format_learning_brief_escapes_html() -> None:
     item = replace(
         _item(),
