@@ -452,6 +452,7 @@ def test_format_item_details_includes_full_brief() -> None:
     assert "<b>ID:</b> kb_7f3a" in text
     assert "<b>Note</b>" in text
     assert "Remember this for weekly agent planning." in text
+    assert text.index("<b>Note</b>") < text.index("<b>Summary</b>")
     assert "Key takeaways:" in text
     assert "- Takeaway one." in text
     assert "Why it matters:" in text
@@ -460,6 +461,14 @@ def test_format_item_details_includes_full_brief() -> None:
 
 def test_format_item_details_omits_blank_note_section() -> None:
     text = format_item_details(_item())
+
+    assert "<b>Note</b>" not in text
+
+
+def test_format_item_details_omits_whitespace_note_section() -> None:
+    item = replace(_item(), user_note=" \n ")
+
+    text = format_item_details(item)
 
     assert "<b>Note</b>" not in text
 

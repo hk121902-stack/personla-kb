@@ -688,7 +688,7 @@ async def test_handler_sends_details_from_replied_message_id() -> None:
         user_id="telegram:123",
         text="more",
         reply=replies.append,
-        reply_to_text="<b>Saved Item</b>\nID: kb_7f3a",
+        reply_to_text="<b>Saved Item</b>\n<b>ID:</b> kb_7f3a",
     )
 
     assert "<b>Details</b>" in replies[0]
@@ -722,7 +722,7 @@ async def test_handler_sends_details_from_replied_raw_item_id() -> None:
         user_id="telegram:123",
         text="details",
         reply=replies.append,
-        reply_to_text="<b>Saved Item</b>\nID: item-a",
+        reply_to_text="<b>Saved Item</b>\n<b>ID:</b> item-a",
     )
 
     assert knowledge.requested_refs == ["item-a"]

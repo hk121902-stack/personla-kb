@@ -56,7 +56,7 @@ _DETAILS_REPLY_MISSING_ID = (
 _DETAILS_LATEST_HINT = (
     'Need a different one? Reply "details" to an item, or send details &lt;item_id&gt;.'
 )
-_ITEM_ID_RE = re.compile(r"(?im)^ID:\s*([^\s<]+)")
+_ITEM_ID_RE = re.compile(r"(?im)^(?:<b>)?ID:(?:</b>)?\s*([^\s<]+)")
 
 
 class TelegramMessageHandler:
