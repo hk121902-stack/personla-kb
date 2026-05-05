@@ -253,13 +253,13 @@ def _assert_compact_card(
 ) -> None:
     assert text.startswith(f'<b><a href="{url}">{title}</a></b>')
     if alias is None:
-        assert "ID: kb_" in text
-        assert 'Need more? Reply "details" or send details kb_' in text
+        assert "<b>ID:</b> kb_" in text
+        assert '<b>Need more?</b> Reply "details" or send details kb_' in text
     else:
-        assert f"ID: {alias}" in text
-        assert f'Need more? Reply "details" or send details {alias}.' in text
-    assert f"Tags: {tags}" in text
-    assert "Priority: unset" in text
+        assert f"<b>ID:</b> {alias}" in text
+        assert f'<b>Need more?</b> Reply "details" or send details {alias}.' in text
+    assert f"<b>Tags:</b> {tags}" in text
+    assert "<b>Priority:</b> unset" in text
 
 
 def test_chat_scoped_user_id_uses_chat_id_when_user_differs() -> None:
@@ -420,7 +420,11 @@ async def test_handler_replies_pending_then_follow_up_for_slow_save() -> None:
     )
     await asyncio.sleep(0.02)
 
-    assert replies[0] == "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief..."
+    assert replies[0] == (
+        "Saved: https://example.com/rag\n"
+        "<b>ID:</b> kb_7f3a\n"
+        "Preparing learning brief..."
+    )
     _assert_compact_card(replies[1], title="Finished Brief", alias="kb_7f3a")
 
 
@@ -443,7 +447,7 @@ async def test_handler_sends_retry_message_when_fast_enrichment_raises() -> None
     )
 
     assert replies == [
-        "Saved with basic enrichment. AI brief is pending retry.\nID: kb_7f3a",
+        "Saved with basic enrichment. AI brief is pending retry.\n<b>ID:</b> kb_7f3a",
     ]
 
 
@@ -466,7 +470,11 @@ async def test_handler_follow_up_prompts_for_note_when_slow_enrichment_needs_tex
     )
     await asyncio.sleep(0.02)
 
-    assert replies[0] == "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief..."
+    assert replies[0] == (
+        "Saved: https://example.com/rag\n"
+        "<b>ID:</b> kb_7f3a\n"
+        "Preparing learning brief..."
+    )
     _assert_compact_card(replies[1], title="https://example.com/rag", alias="kb_7f3a")
     assert replies[2] == (
         "I saved the link, but could not extract text from: https://example.com/rag\n"
@@ -522,8 +530,8 @@ async def test_handler_follow_up_sends_retry_message_when_slow_enrichment_fails(
     await asyncio.sleep(0.02)
 
     assert replies == [
-        "Saved: https://example.com/rag\nID: kb_7f3a\nPreparing learning brief...",
-        "Saved with basic enrichment. AI brief is pending retry.\nID: kb_7f3a",
+        "Saved: https://example.com/rag\n<b>ID:</b> kb_7f3a\nPreparing learning brief...",
+        "Saved with basic enrichment. AI brief is pending retry.\n<b>ID:</b> kb_7f3a",
     ]
 
 
@@ -614,7 +622,7 @@ async def test_handler_show_renders_compact_results() -> None:
     assert '<b>Found 1 item for "rag"</b>' in replies[0]
     assert "RAG Search" in replies[0]
     assert "Answer sentence" not in replies[0]
-    assert 'Need more? Reply "details" to an item, or send details kb_7f3a.' in replies[0]
+    assert '<b>Need more?</b> Reply "details" to an item, or send details kb_7f3a.' in replies[0]
 
 
 @pytest.mark.asyncio
@@ -1030,7 +1038,7 @@ async def test_handler_refresh_reports_retry_pending_with_alias() -> None:
     await handler.handle_text(user_id="telegram:123", text="refresh kb_7f3a", reply=replies.append)
 
     assert replies == [
-        "Saved with basic enrichment. AI brief is pending retry.\nID: kb_7f3a",
+        "Saved with basic enrichment. AI brief is pending retry.\n<b>ID:</b> kb_7f3a",
     ]
 
 
