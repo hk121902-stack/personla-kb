@@ -73,6 +73,11 @@ class RecordingSplitKnowledge(FakeKnowledge):
         self.create_link_calls.append(
             {"user_id": user_id, "url": url, "note": note, "priority": priority},
         )
+        self.created = replace(
+            self.created,
+            user_note=note,
+            priority=priority or Priority.UNSET,
+        )
         return self.created
 
     async def enrich_saved_item(self, *, user_id, item_id):
@@ -399,6 +404,7 @@ async def test_handler_note_save_uses_split_enrichment_for_split_knowledge() -> 
         {"user_id": "telegram:123", "item_id": "7f3a9b8c1234"},
     ]
     _assert_compact_card(replies[0], title="Finished Brief", alias="kb_7f3a")
+    assert "<b>Note:</b> manual text" in replies[0]
 
 
 @pytest.mark.asyncio
@@ -689,6 +695,27 @@ async def test_handler_sends_details_from_replied_message_id() -> None:
         text="more",
         reply=replies.append,
         reply_to_text="<b>Saved Item</b>\n<b>ID:</b> kb_7f3a",
+    )
+
+    assert "<b>Details</b>" in replies[0]
+    assert "Detailed Item" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_handler_sends_details_from_replied_plain_message_id() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FakeKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="more",
+        reply=replies.append,
+        reply_to_text="Saved Item\nID: kb_7f3a",
     )
 
     assert "<b>Details</b>" in replies[0]

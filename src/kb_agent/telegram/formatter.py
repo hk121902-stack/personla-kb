@@ -302,13 +302,18 @@ def format_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:
     if brief is None:
         return format_save_confirmation(item, alias=alias)
 
-    alias = alias or alias_for_item_id(item.id)
+    alias = _alias_or_item_id(item, alias)
     summary = _compact_summary(brief.summary)
-    return "\n".join(
+    lines = [
+        f"<b>{_title_link(brief.title, item.url)}</b>",
+        _labeled_line("ID", alias),
+        _tag_line(brief.tags),
+    ]
+    note_line = _compact_note_line(item.user_note)
+    if note_line:
+        lines.append(note_line)
+    lines.extend(
         [
-            f"<b>{_title_link(brief.title, item.url)}</b>",
-            _labeled_line("ID", alias),
-            _tag_line(brief.tags),
             f"{_label('Priority')} {_html(item.priority.value)} "
             f"· {_html(brief.estimated_time_minutes)} min",
             "",
@@ -317,6 +322,7 @@ def format_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:
             _detail_hint(alias),
         ],
     )
+    return "\n".join(lines)
 
 
 def format_item_details(item: SavedItem, *, alias: str | None = None) -> str:
