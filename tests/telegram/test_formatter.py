@@ -64,6 +64,7 @@ def test_save_confirmation_is_compact() -> None:
             url="https://example.com/rag",
             source_type=SourceType.WEB,
             now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+            note="learn this for agent memory",
         ),
         title="RAG Notes",
         tags=["rag", "retrieval"],
@@ -74,11 +75,30 @@ def test_save_confirmation_is_compact() -> None:
     text = format_save_confirmation(item)
 
     assert text.startswith('<b><a href="https://example.com/rag">RAG Notes</a></b>')
-    assert "ID: kb_" in text
-    assert "Tags: rag, retrieval" in text
-    assert "Priority: high" in text
+    assert "<b>ID:</b> kb_" in text
+    assert "<b>Tags:</b> rag, retrieval" in text
+    assert "<b>Priority:</b> high" in text
+    assert "<b>Note:</b> learn this for agent memory" in text
     assert "Status: ready" not in text
-    assert 'Need more? Reply "details" or send details kb_' in text
+    assert '<b>Need more?</b> Reply "details" or send details kb_' in text
+
+
+def test_save_confirmation_omits_blank_note() -> None:
+    item = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/rag",
+            source_type=SourceType.WEB,
+            now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+        ),
+        title="RAG Notes",
+        tags=["rag"],
+        status=Status.READY,
+    )
+
+    text = format_save_confirmation(item)
+
+    assert "<b>Note:</b>" not in text
 
 
 def test_needs_text_prompt_tells_user_to_save_note() -> None:
@@ -142,7 +162,64 @@ def test_format_retrieval_response_show_mode_is_compact_list() -> None:
     assert '<b>Found 1 item for "claude"</b>' in text
     assert "Graphify + Claude Code" in text
     assert "Long synthesized answer" not in text
-    assert 'Need more? Reply "details" to an item, or send details kb_7f3a.' in text
+    assert '<b>Need more?</b> Reply "details" to an item, or send details kb_7f3a.' in text
+
+
+def test_format_retrieval_response_show_mode_includes_compact_note() -> None:
+    item = replace(
+        _item(),
+        id="7f3a9b8c1234",
+        title="Graphify + Claude Code",
+        tags=["claude-code", "repos"],
+        user_note=(
+            "compare this with my current repo workflow. "
+            "This second sentence should stay hidden in compact cards."
+        ),
+        summary="A short summary.",
+    )
+    response = type(
+        "Response",
+        (),
+        {
+            "question": "claude",
+            "answer": "Long synthesized answer that should not show.",
+            "matches": [item],
+            "item_aliases": {item.id: "kb_7f3a"},
+            "extra_context": "",
+            "text": "legacy",
+        },
+    )()
+
+    text = format_retrieval_response(response, mode="show", query="claude")
+
+    assert "<b>Note:</b> compare this with my current repo workflow." in text
+    assert "This second sentence should stay hidden" not in text
+
+
+def test_compact_note_escapes_html() -> None:
+    item = replace(
+        _item(),
+        id="7f3a9b8c1234",
+        title="Escaped Note",
+        user_note='Use <script> & "quotes". Hidden second sentence.',
+        summary="A short summary.",
+    )
+    response = type(
+        "Response",
+        (),
+        {
+            "question": "escaped",
+            "answer": "Answer.",
+            "matches": [item],
+            "item_aliases": {item.id: "kb_7f3a"},
+            "extra_context": "",
+            "text": "legacy",
+        },
+    )()
+
+    text = format_retrieval_response(response, mode="show", query="escaped")
+
+    assert '<b>Note:</b> Use &lt;script&gt; &amp; &quot;quotes&quot;.' in text
 
 
 def test_format_retrieval_response_ask_mode_is_short_answer_with_sources() -> None:
@@ -220,7 +297,7 @@ def test_format_daily_digest_uses_compact_cards() -> None:
 
     assert "<b>Daily tiny nudge</b>" in text
     assert "Daily Item" in text
-    assert "ID: kb_7f3a" in text
+    assert "<b>ID:</b> kb_7f3a" in text
     assert "Need more?" in text
 
 
@@ -289,12 +366,12 @@ def test_format_learning_brief_is_compact_html_card() -> None:
     text = format_learning_brief(_item())
 
     assert text.startswith('<b><a href="https://example.com/brief">Learning Brief</a></b>')
-    assert "ID: kb_7f3a" in text
-    assert "Tags: gemini, claude, agents, repos, costs" in text
-    assert "Priority: unset · 20 min" in text
+    assert "<b>ID:</b> kb_7f3a" in text
+    assert "<b>Tags:</b> gemini, claude, agents, repos, costs" in text
+    assert "<b>Priority:</b> unset · 20 min" in text
     assert "This second sentence should be hidden" not in text
     assert "Key takeaways:" not in text
-    assert 'Need more? Reply "details" or send details kb_7f3a.' in text
+    assert '<b>Need more?</b> Reply "details" or send details kb_7f3a.' in text
 
 
 def test_format_learning_brief_escapes_html() -> None:
@@ -333,7 +410,7 @@ def test_format_pending_learning_brief_includes_alias() -> None:
 
     assert format_pending_learning_brief(item, alias="kb_<7f3a>&") == (
         "Saved: Learning &lt;Brief&gt; &amp; More\n"
-        "ID: kb_&lt;7f3a&gt;&amp;\n"
+        "<b>ID:</b> kb_&lt;7f3a&gt;&amp;\n"
         "Preparing learning brief..."
     )
 
@@ -341,7 +418,7 @@ def test_format_pending_learning_brief_includes_alias() -> None:
 def test_format_enrichment_retry_message_includes_alias() -> None:
     assert format_enrichment_retry_message(_item(), alias="kb_<7f3a>&") == (
         "Saved with basic enrichment. AI brief is pending retry.\n"
-        "ID: kb_&lt;7f3a&gt;&amp;"
+        "<b>ID:</b> kb_&lt;7f3a&gt;&amp;"
     )
 
 

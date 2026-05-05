@@ -61,15 +61,30 @@ def _compact_summary(text: str) -> str:
     return compact
 
 
-def _tag_line(tags: Sequence[str]) -> str:
-    selected = [tag for tag in tags if tag.strip()][:_TAG_LIMIT]
-    if not selected:
-        return "Tags: none"
-    return "Tags: " + ", ".join(_html(tag) for tag in selected)
+def _label(name: str) -> str:
+    return f"<b>{_html(name)}:</b>"
+
+
+def _labeled_line(name: str, value: object) -> str:
+    return f"{_label(name)} {_html(value)}"
 
 
 def _detail_hint(alias: str) -> str:
-    return f'Need more? Reply "details" or send details {_html(alias)}.'
+    return f'<b>{_html("Need more?")}</b> Reply "details" or send details {_html(alias)}.'
+
+
+def _tag_line(tags: Sequence[str]) -> str:
+    selected = [tag for tag in tags if tag.strip()][:_TAG_LIMIT]
+    if not selected:
+        return f"{_label('Tags')} none"
+    return f"{_label('Tags')} " + ", ".join(_html(tag) for tag in selected)
+
+
+def _compact_note_line(note: str) -> str:
+    compact = _compact_summary(note)
+    if not compact:
+        return ""
+    return _labeled_line("Note", compact)
 
 
 def format_save_confirmation(item: SavedItem, *, alias: str | None = None) -> str:
@@ -78,10 +93,13 @@ def format_save_confirmation(item: SavedItem, *, alias: str | None = None) -> st
     summary = _compact_summary(item.summary or item.user_note or title)
     lines = [
         f"<b>{_title_link(title, item.url)}</b>",
-        f"ID: {_html(alias)}",
+        _labeled_line("ID", alias),
         _tag_line(item.tags),
-        f"Priority: {_html(item.priority.value)}",
+        _labeled_line("Priority", item.priority.value),
     ]
+    note_line = _compact_note_line(item.user_note)
+    if note_line:
+        lines.append(note_line)
     if summary:
         lines.extend(["", _html(summary)])
     lines.extend(["", _detail_hint(alias)])
@@ -128,7 +146,8 @@ def format_retrieval_response(
             lines.append("")
         first_alias = _item_alias(matches[0], aliases)
         lines.append(
-            f'Need more? Reply "details" to an item, or send details {_html(first_alias)}.',
+            f'<b>{_html("Need more?")}</b> Reply "details" to an item, '
+            f"or send details {_html(first_alias)}.",
         )
         return "\n".join(lines).strip()
 
@@ -149,7 +168,8 @@ def format_retrieval_response(
         lines.extend(
             [
                 "",
-                f'Need more? Reply "details" to an item, or send details {_html(first_alias)}.',
+                f'<b>{_html("Need more?")}</b> Reply "details" to an item, '
+                f"or send details {_html(first_alias)}.",
             ],
         )
     return "\n".join(lines)
@@ -174,14 +194,17 @@ def _alias_or_item_id(item: SavedItem, alias: str | None = None) -> str:
 def _compact_item_card(item: SavedItem, *, alias: str) -> str:
     title = item.title or item.url
     summary = _compact_summary(item.summary or item.user_note or item.extracted_text or title)
-    return "\n".join(
-        [
-            f"<b>{_title_link(title, item.url)}</b>",
-            f"ID: {_html(alias)}",
-            _tag_line(item.tags),
-            _html(summary),
-        ],
-    )
+    lines = [
+        f"<b>{_title_link(title, item.url)}</b>",
+        _labeled_line("ID", alias),
+        _tag_line(item.tags),
+    ]
+    note_line = _compact_note_line(item.user_note)
+    if note_line:
+        lines.append(note_line)
+    if summary:
+        lines.append(_html(summary))
+    return "\n".join(lines)
 
 
 def format_daily_digest(digest: TextResult | str) -> str:
@@ -197,7 +220,8 @@ def format_daily_digest(digest: TextResult | str) -> str:
         lines.extend(
             [
                 "",
-                f'Need more? Reply "details" to an item, or send details {_html(first_alias)}.',
+                f'<b>{_html("Need more?")}</b> Reply "details" to an item, '
+                f"or send details {_html(first_alias)}.",
             ],
         )
     return "\n".join(lines)
@@ -222,7 +246,8 @@ def format_weekly_digest(digest: TextResult | str) -> str:
         lines.extend(
             [
                 "",
-                f'Need more? Reply "details" to an item, or send details {_html(first_alias)}.',
+                f'<b>{_html("Need more?")}</b> Reply "details" to an item, '
+                f"or send details {_html(first_alias)}.",
             ],
         )
     return "\n".join(lines)
@@ -282,9 +307,10 @@ def format_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:
     return "\n".join(
         [
             f"<b>{_title_link(brief.title, item.url)}</b>",
-            f"ID: {_html(alias)}",
+            _labeled_line("ID", alias),
             _tag_line(brief.tags),
-            f"Priority: {_html(item.priority.value)} · {_html(brief.estimated_time_minutes)} min",
+            f"{_label('Priority')} {_html(item.priority.value)} "
+            f"· {_html(brief.estimated_time_minutes)} min",
             "",
             _html(summary),
             "",
@@ -330,7 +356,7 @@ def format_pending_learning_brief(item: SavedItem, *, alias: str | None = None) 
     return "\n".join(
         [
             f"Saved: {_html(item.title or item.url)}",
-            f"ID: {_html(alias)}",
+            _labeled_line("ID", alias),
             "Preparing learning brief...",
         ],
     )
@@ -341,7 +367,7 @@ def format_enrichment_retry_message(item: SavedItem, *, alias: str | None = None
     return "\n".join(
         [
             "Saved with basic enrichment. AI brief is pending retry.",
-            f"ID: {_html(alias)}",
+            _labeled_line("ID", alias),
         ],
     )
 
