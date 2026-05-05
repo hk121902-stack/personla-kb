@@ -90,7 +90,7 @@ def _compact_note_line(note: str) -> str:
 def format_save_confirmation(item: SavedItem, *, alias: str | None = None) -> str:
     title = item.title or item.url
     alias = alias or alias_for_item_id(item.id)
-    summary = _compact_summary(item.summary or item.user_note or title)
+    summary = _compact_summary(item.summary or title)
     lines = [
         f"<b>{_title_link(title, item.url)}</b>",
         _labeled_line("ID", alias),
@@ -193,7 +193,7 @@ def _alias_or_item_id(item: SavedItem, alias: str | None = None) -> str:
 
 def _compact_item_card(item: SavedItem, *, alias: str) -> str:
     title = item.title or item.url
-    summary = _compact_summary(item.summary or item.user_note or item.extracted_text or title)
+    summary = _compact_summary(item.summary or item.extracted_text or title)
     lines = [
         f"<b>{_title_link(title, item.url)}</b>",
         _labeled_line("ID", alias),

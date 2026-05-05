@@ -101,6 +101,27 @@ def test_save_confirmation_omits_blank_note() -> None:
     assert "<b>Note:</b>" not in text
 
 
+def test_save_confirmation_does_not_duplicate_note_as_summary() -> None:
+    note = "learn this for agent memory"
+    item = replace(
+        SavedItem.new(
+            user_id="telegram:123",
+            url="https://example.com/rag",
+            source_type=SourceType.WEB,
+            now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+            note=note,
+        ),
+        title="RAG Notes",
+        summary="",
+        status=Status.READY,
+    )
+
+    text = format_save_confirmation(item)
+
+    assert f"<b>Note:</b> {note}" in text
+    assert text.count(note) == 1
+
+
 def test_needs_text_prompt_tells_user_to_save_note() -> None:
     item = SavedItem.new(
         user_id="telegram:123",
@@ -194,6 +215,34 @@ def test_format_retrieval_response_show_mode_includes_compact_note() -> None:
 
     assert "<b>Note:</b> compare this with my current repo workflow." in text
     assert "This second sentence should stay hidden" not in text
+
+
+def test_format_retrieval_response_show_mode_does_not_duplicate_note_as_summary() -> None:
+    note = "compare this with my current repo workflow"
+    item = replace(
+        _item(),
+        id="7f3a9b8c1234",
+        title="Graphify + Claude Code",
+        user_note=note,
+        summary="",
+    )
+    response = type(
+        "Response",
+        (),
+        {
+            "question": "claude",
+            "answer": "Long synthesized answer that should not show.",
+            "matches": [item],
+            "item_aliases": {item.id: "kb_7f3a"},
+            "extra_context": "",
+            "text": "legacy",
+        },
+    )()
+
+    text = format_retrieval_response(response, mode="show", query="claude")
+
+    assert f"<b>Note:</b> {note}" in text
+    assert text.count(note) == 1
 
 
 def test_compact_note_escapes_html() -> None:
