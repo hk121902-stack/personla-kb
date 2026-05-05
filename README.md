@@ -13,6 +13,7 @@ Telegram-first personal knowledge base agent for saving links, surfacing them la
 - Lightweight SQLite-backed storage and a modular core suitable for future providers.
 - Stable, editable aliases for saved items and AI enrichment metadata persistence.
 - Optional AI enrichment layer with configurable provider chaining (`gemini`, `ollama`, `heuristic`).
+- Platform-aware extraction for YouTube links and X posts, with provider metadata used before generic scraping.
 
 ## Quick Start
 
@@ -83,6 +84,14 @@ ruff check .
 
 Archived items are excluded from default answers and digests.
 
+## Ongoing Extraction Improvements
+
+YouTube and X links now use provider metadata endpoints before generic scraping:
+
+- YouTube links use `youtube.com/oembed` for title, channel, and URL-based metadata.
+- X posts use `publish.twitter.com/oembed` with HTML-to-text extraction.
+- If metadata endpoints are unavailable, extraction falls back to the existing webpage parser.
+
 ## Extraction Fallback
 
 If source extraction is blocked, the bot keeps the URL and prompts you to add your own summary text:
@@ -90,10 +99,7 @@ If source extraction is blocked, the bot keeps the URL and prompts you to add yo
 
 ## Release Notes
 
-See `CHANGELOG.md` for version history. Current release: `v0.0.2`.
-
-- oEmbed fallback for YouTube and X links now preserves useful summaries when primary extraction is blocked.
-- Stable item aliases and improved AI enrichment command flows improve reliability for Telegram workflows.
+See `CHANGELOG.md` for version history. Current release: `v0.0.3`.
 
 ## Development Notes
 

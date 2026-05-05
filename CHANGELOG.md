@@ -35,6 +35,21 @@
 
 - Updated changelog and README for the `v0.0.2` release.
 
+## v0.0.3 - 2026-05-05
+
+### Added
+
+- Link extraction now supports quick metadata capture for YouTube videos via oEmbed.
+- Link extraction now supports X posts via oEmbed metadata fallback.
+
+### Changed
+
+- Enrichment and extraction flow now checks platform-specific metadata providers before page fetch fallback.
+
+### Fixed
+
+- Added coverage for short-link/video and X post extraction parsing paths to improve consistency across blocked/redirect-heavy links.
+
 ## v0.0.1 - 2026-05-03
 
 ### Added
