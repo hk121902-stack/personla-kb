@@ -327,14 +327,20 @@ def format_item_details(item: SavedItem, *, alias: str | None = None) -> str:
     lines = [
         "<b>Details</b>",
         f"<b>{_title_link(title, item.url)}</b>",
-        f"ID: {_html(alias)}",
+        _labeled_line("ID", alias),
         _tag_line(brief.tags if brief is not None else item.tags),
-        f"Priority: {_html(item.priority.value)}",
-        f"Source: {_html(item.url)}",
-        "",
-        "<b>Summary</b>",
-        _html(summary or title),
+        _labeled_line("Priority", item.priority.value),
+        f"{_label('Source')} {_html(item.url)}",
     ]
+    if item.user_note.strip():
+        lines.extend(["", "<b>Note</b>", _html(item.user_note.strip())])
+    lines.extend(
+        [
+            "",
+            "<b>Summary</b>",
+            _html(summary or title),
+        ],
+    )
     if brief is not None:
         lines.extend(["", "<b>Key takeaways:</b>"])
         lines.extend(f"- {_html(takeaway)}" for takeaway in brief.key_takeaways)
@@ -344,8 +350,8 @@ def format_item_details(item: SavedItem, *, alias: str | None = None) -> str:
                 "<b>Why it matters:</b>",
                 _html(brief.why_it_matters),
                 "",
-                f"Time: {_html(brief.estimated_time_minutes)} min",
-                f"Next: {_html(brief.suggested_next_action)}",
+                f"{_label('Time')} {_html(brief.estimated_time_minutes)} min",
+                f"{_label('Next')} {_html(brief.suggested_next_action)}",
             ],
         )
     return "\n".join(line for line in lines if line != "")

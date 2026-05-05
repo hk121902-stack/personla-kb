@@ -444,14 +444,32 @@ def test_format_learning_brief_escapes_html() -> None:
 
 
 def test_format_item_details_includes_full_brief() -> None:
-    text = format_item_details(_item())
+    item = replace(_item(), user_note="Remember this for weekly agent planning.")
+
+    text = format_item_details(item)
 
     assert "<b>Details</b>" in text
-    assert "ID: kb_7f3a" in text
+    assert "<b>ID:</b> kb_7f3a" in text
+    assert "<b>Note</b>" in text
+    assert "Remember this for weekly agent planning." in text
     assert "Key takeaways:" in text
     assert "- Takeaway one." in text
     assert "Why it matters:" in text
-    assert "Source: https://example.com/brief" in text
+    assert "<b>Source:</b> https://example.com/brief" in text
+
+
+def test_format_item_details_omits_blank_note_section() -> None:
+    text = format_item_details(_item())
+
+    assert "<b>Note</b>" not in text
+
+
+def test_format_item_details_escapes_note() -> None:
+    item = replace(_item(), user_note='Use <raw> & "quoted" note.')
+
+    text = format_item_details(item)
+
+    assert "Use &lt;raw&gt; &amp; &quot;quoted&quot; note." in text
 
 
 def test_format_pending_learning_brief_includes_alias() -> None:
