@@ -43,9 +43,15 @@ class FakeKnowledge:
 
 
 class SlowKnowledge(FakeKnowledge):
+    note = ""
+
     def __init__(self) -> None:
         super().__init__()
-        self.created = replace(_saved_item(title="https://example.com/rag"), id="7f3a9b8c1234")
+        self.created = replace(
+            _saved_item(title="https://example.com/rag"),
+            id="7f3a9b8c1234",
+            user_note=self.note,
+        )
 
     def create_link(self, *, user_id, url, note="", priority=None):
         return self.created
@@ -88,6 +94,14 @@ class RecordingSplitKnowledge(FakeKnowledge):
 class FastFailingEnrichmentKnowledge(SlowKnowledge):
     async def enrich_saved_item(self, *, user_id, item_id):
         raise RuntimeError("AI unavailable")
+
+
+class FastFailingNoteEnrichmentKnowledge(FastFailingEnrichmentKnowledge):
+    note = "manual text"
+
+
+class SlowNoteKnowledge(SlowKnowledge):
+    note = "manual text"
 
 
 class SlowNeedsTextKnowledge(SlowKnowledge):
@@ -435,6 +449,28 @@ async def test_handler_replies_pending_then_follow_up_for_slow_save() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handler_pending_reply_includes_note_for_slow_save() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=SlowNoteKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+        ai_sync_wait_seconds=0,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="https://example.com/rag note: manual text",
+        reply=replies.append,
+    )
+    await asyncio.sleep(0.02)
+
+    assert "<b>Note:</b> manual text" in replies[0]
+
+
+@pytest.mark.asyncio
 async def test_handler_sends_retry_message_when_fast_enrichment_raises() -> None:
     replies = []
     handler = TelegramMessageHandler(
@@ -454,6 +490,33 @@ async def test_handler_sends_retry_message_when_fast_enrichment_raises() -> None
 
     assert replies == [
         "Saved with basic enrichment. AI brief is pending retry.\n<b>ID:</b> kb_7f3a",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_handler_retry_message_includes_note_when_fast_enrichment_raises() -> None:
+    replies = []
+    handler = TelegramMessageHandler(
+        knowledge=FastFailingNoteEnrichmentKnowledge(),
+        retrieval=FakeRetrieval(),
+        digest_service=None,
+        archive_review_service=None,
+        ai_router=FakeAIRouter(),
+        ai_sync_wait_seconds=1,
+    )
+
+    await handler.handle_text(
+        user_id="telegram:123",
+        text="https://example.com/rag note: manual text",
+        reply=replies.append,
+    )
+
+    assert replies == [
+        (
+            "Saved with basic enrichment. AI brief is pending retry.\n"
+            "<b>ID:</b> kb_7f3a\n"
+            "<b>Note:</b> manual text."
+        ),
     ]
 
 

@@ -365,23 +365,27 @@ def format_item_details(item: SavedItem, *, alias: str | None = None) -> str:
 
 def format_pending_learning_brief(item: SavedItem, *, alias: str | None = None) -> str:
     alias = alias or alias_for_item_id(item.id)
-    return "\n".join(
-        [
-            f"Saved: {_html(item.title or item.url)}",
-            _labeled_line("ID", alias),
-            "Preparing learning brief...",
-        ],
-    )
+    lines = [
+        f"Saved: {_html(item.title or item.url)}",
+        _labeled_line("ID", alias),
+    ]
+    note_line = _compact_note_line(item.user_note)
+    if note_line:
+        lines.append(note_line)
+    lines.append("Preparing learning brief...")
+    return "\n".join(lines)
 
 
 def format_enrichment_retry_message(item: SavedItem, *, alias: str | None = None) -> str:
     alias = alias or alias_for_item_id(item.id)
-    return "\n".join(
-        [
-            "Saved with basic enrichment. AI brief is pending retry.",
-            _labeled_line("ID", alias),
-        ],
-    )
+    lines = [
+        "Saved with basic enrichment. AI brief is pending retry.",
+        _labeled_line("ID", alias),
+    ]
+    note_line = _compact_note_line(item.user_note)
+    if note_line:
+        lines.append(note_line)
+    return "\n".join(lines)
 
 
 def format_ai_status(status, *, pending_retry_count: int) -> str:
