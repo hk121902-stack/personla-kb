@@ -173,6 +173,81 @@ async def test_webpage_extractor_returns_instagram_fallback_when_metadata_is_emp
 
 
 @pytest.mark.asyncio
+async def test_webpage_extractor_returns_instagram_fallback_when_dns_resolves_to_private_ip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[object, ...]]:
+        return [(None, None, None, None, ("10.0.0.1", 443))]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, text="<html><body>unsafe</body></html>")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://www.instagram.com/reel/DXkCDvJoYa8/")
+
+    assert called is False
+    assert result is not None
+    assert result.title == "Instagram Reel"
+    assert result.metadata == {
+        "provider_name": "Instagram",
+        "instagram_kind": "reel",
+        "extraction": "instagram_fallback",
+    }
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_returns_instagram_fallback_when_request_fails() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("network unavailable", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://www.instagram.com/reel/DXkCDvJoYa8/")
+
+    assert result is not None
+    assert result.title == "Instagram Reel"
+    assert result.metadata["instagram_kind"] == "reel"
+    assert result.metadata["extraction"] == "instagram_fallback"
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_returns_instagram_fallback_for_oversized_response_body() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x" * (MAX_WEBPAGE_BODY_BYTES + 1))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://www.instagram.com/reel/DXkCDvJoYa8/")
+
+    assert result is not None
+    assert result.title == "Instagram Reel"
+    assert result.metadata["instagram_kind"] == "reel"
+    assert result.metadata["extraction"] == "instagram_fallback"
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_returns_generic_instagram_fallback_for_profile_paths() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://www.instagram.com/someuser/")
+
+    assert result is not None
+    assert result.title == "Instagram"
+    assert result.metadata["instagram_kind"] == "instagram"
+    assert result.metadata["extraction"] == "instagram_fallback"
+
+
+@pytest.mark.asyncio
 async def test_webpage_extractor_returns_none_when_blocked() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403)
