@@ -115,7 +115,8 @@ async def test_webpage_extractor_uses_instagram_opengraph_metadata_for_reel_link
             text=(
                 "<html><head>"
                 '<meta property="og:title" content="Build agent memory - Instagram Reel">'
-                '<meta property="og:description" content="A short reel about saving learning links.">'
+                '<meta property="og:description" content="A short reel about saving '
+                'learning links.">'
                 '<meta property="og:image" content="https://cdn.example.com/reel.jpg">'
                 '<meta property="og:video" content="https://cdn.example.com/reel.mp4">'
                 "</head><body></body></html>"
