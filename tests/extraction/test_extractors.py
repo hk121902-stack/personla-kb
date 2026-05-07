@@ -104,6 +104,75 @@ async def test_webpage_extractor_uses_x_oembed_metadata_for_status_links() -> No
 
 
 @pytest.mark.asyncio
+async def test_webpage_extractor_uses_instagram_opengraph_metadata_for_reel_links() -> None:
+    seen_request: httpx.Request | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_request
+        seen_request = request
+        return httpx.Response(
+            200,
+            text=(
+                "<html><head>"
+                '<meta property="og:title" content="Build agent memory - Instagram Reel">'
+                '<meta property="og:description" content="A short reel about saving learning links.">'
+                '<meta property="og:image" content="https://cdn.example.com/reel.jpg">'
+                '<meta property="og:video" content="https://cdn.example.com/reel.mp4">'
+                "</head><body></body></html>"
+            ),
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://www.instagram.com/reel/DXkCDvJoYa8/")
+
+    assert result is not None
+    assert seen_request is not None
+    assert seen_request.headers["host"] == "www.instagram.com"
+    assert result.title == "Build agent memory - Instagram Reel"
+    assert "Caption: A short reel about saving learning links." in result.text
+    assert "URL: https://www.instagram.com/reel/DXkCDvJoYa8/" in result.text
+    assert result.metadata["provider_name"] == "Instagram"
+    assert result.metadata["instagram_kind"] == "reel"
+    assert result.metadata["image_url"] == "https://cdn.example.com/reel.jpg"
+    assert result.metadata["video_url"] == "https://cdn.example.com/reel.mp4"
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_returns_instagram_fallback_when_metadata_is_blocked() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://www.instagram.com/reel/DXkCDvJoYa8/")
+
+    assert result is not None
+    assert result.title == "Instagram Reel"
+    assert "No public caption was available" in result.text
+    assert result.metadata == {
+        "provider_name": "Instagram",
+        "instagram_kind": "reel",
+        "extraction": "instagram_fallback",
+    }
+
+
+@pytest.mark.asyncio
+async def test_webpage_extractor_returns_instagram_fallback_when_metadata_is_empty() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html><head><title>Instagram</title></head></html>")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        extractor = WebpageExtractor(client=client)
+        result = await extractor.extract("https://instagram.com/p/ABC123/")
+
+    assert result is not None
+    assert result.title == "Instagram Post"
+    assert result.metadata["instagram_kind"] == "post"
+    assert result.metadata["extraction"] == "instagram_fallback"
+
+
+@pytest.mark.asyncio
 async def test_webpage_extractor_returns_none_when_blocked() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403)

@@ -42,6 +42,10 @@ class WebpageExtractor:
         if youtube_metadata is not None:
             return youtube_metadata
 
+        instagram_metadata = await self._extract_instagram_metadata(url)
+        if instagram_metadata is not None:
+            return instagram_metadata
+
         target = _safe_fetch_target(url)
         if target is None:
             return None
@@ -174,6 +178,72 @@ class WebpageExtractor:
             metadata=metadata,
         )
 
+    async def _extract_instagram_metadata(self, url: str) -> ExtractedContent | None:
+        if not _is_instagram_url(url):
+            return None
+
+        kind = _instagram_kind(url)
+        fallback = _instagram_fallback_content(url, kind)
+        target = _safe_fetch_target(url)
+        if target is None:
+            return fallback
+
+        try:
+            async with self.client.stream(
+                "GET",
+                target.url,
+                headers=target.headers,
+                extensions=target.extensions,
+                follow_redirects=False,
+            ) as response:
+                if response.status_code < 200 or response.status_code >= 300:
+                    return fallback
+
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > MAX_WEBPAGE_BODY_BYTES:
+                        return fallback
+        except httpx.HTTPError:
+            return fallback
+
+        soup = BeautifulSoup(bytes(body), "html.parser")
+        title = _clean_instagram_title(
+            _first_meta_content(soup, "og:title", "twitter:title")
+            or (soup.title.get_text(strip=True) if soup.title else ""),
+        )
+        description = _clean_instagram_description(
+            _first_meta_content(soup, "og:description", "description", "twitter:description"),
+        )
+
+        if not title and not description:
+            return fallback
+
+        display_kind = _instagram_display_kind(kind)
+        resolved_title = title or display_kind
+        text_parts = [f"{display_kind}: {resolved_title}"]
+        if description:
+            text_parts.append(f"Caption: {description}")
+        text_parts.append(f"URL: {url}")
+
+        metadata = {
+            "provider_name": "Instagram",
+            "instagram_kind": kind,
+            "status_code": str(response.status_code),
+        }
+        image_url = _first_meta_content(soup, "og:image", "twitter:image")
+        video_url = _first_meta_content(soup, "og:video", "og:video:url", "twitter:player")
+        if image_url:
+            metadata["image_url"] = image_url
+        if video_url:
+            metadata["video_url"] = video_url
+
+        return ExtractedContent(
+            title=resolved_title,
+            text="\n".join(text_parts),
+            metadata=metadata,
+        )
+
 
 def _safe_fetch_target(url: str) -> SafeFetchTarget | None:
     parsed = urlparse(url)
@@ -237,6 +307,70 @@ def _is_youtube_url(url: str) -> bool:
 def _is_x_url(url: str) -> bool:
     hostname = (urlparse(url).hostname or "").removeprefix("www.").lower()
     return hostname == "x.com" or hostname.endswith(".x.com") or hostname == "twitter.com"
+
+
+def _is_instagram_url(url: str) -> bool:
+    hostname = (urlparse(url).hostname or "").removeprefix("www.").lower()
+    return hostname == "instagram.com" or hostname.endswith(".instagram.com")
+
+
+def _instagram_kind(url: str) -> str:
+    path = urlparse(url).path.lower()
+    if path.startswith("/reel/"):
+        return "reel"
+    if path.startswith("/p/"):
+        return "post"
+    return "instagram"
+
+
+def _instagram_display_kind(kind: str) -> str:
+    if kind == "reel":
+        return "Instagram Reel"
+    if kind == "post":
+        return "Instagram Post"
+    return "Instagram"
+
+
+def _instagram_fallback_content(url: str, kind: str) -> ExtractedContent:
+    title = _instagram_display_kind(kind)
+    return ExtractedContent(
+        title=title,
+        text=f"{title} saved from URL. No public caption was available. URL: {url}",
+        metadata={
+            "provider_name": "Instagram",
+            "instagram_kind": kind,
+            "extraction": "instagram_fallback",
+        },
+    )
+
+
+def _first_meta_content(soup: BeautifulSoup, *names: str) -> str:
+    for name in names:
+        tag = soup.find("meta", attrs={"property": name})
+        if tag is None:
+            tag = soup.find("meta", attrs={"name": name})
+        if tag is None:
+            continue
+        content = tag.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+    return ""
+
+
+def _clean_instagram_title(value: str) -> str:
+    cleaned = " ".join(value.split())
+    if " • Instagram" in cleaned:
+        cleaned = cleaned.split(" • Instagram", 1)[0].strip()
+    if cleaned.lower() in {"", "instagram", "instagram reel", "instagram post"}:
+        return ""
+    return cleaned
+
+
+def _clean_instagram_description(value: str) -> str:
+    cleaned = " ".join(value.split())
+    if cleaned.lower() in {"", "instagram", "photos and videos"}:
+        return ""
+    return cleaned
 
 
 def _string_payload_value(payload: object, key: str) -> str:
