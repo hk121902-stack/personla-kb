@@ -32,6 +32,29 @@ async def test_heuristic_provider_enriches_from_extracted_content() -> None:
 
 
 @pytest.mark.asyncio
+async def test_heuristic_provider_adds_instagram_reel_fallback_tags() -> None:
+    item = SavedItem.new(
+        user_id="telegram:123",
+        url="https://www.instagram.com/reel/DXkCDvJoYa8/",
+        source_type=SourceType.INSTAGRAM,
+        now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+    )
+    extracted = ExtractedContent(
+        title="Instagram Reel",
+        text="Saved Instagram Reel. No public caption was available.",
+        metadata={"provider_name": "Instagram", "instagram_kind": "reel"},
+    )
+
+    enriched = await HeuristicAIProvider().enrich(item, extracted)
+    brief = await HeuristicAIProvider().generate_learning_brief(item, extracted)
+
+    assert "instagram" in enriched.tags
+    assert "reel" in enriched.tags
+    assert "instagram" in brief.tags
+    assert "reel" in brief.tags
+
+
+@pytest.mark.asyncio
 async def test_heuristic_provider_marks_missing_content_as_needs_text() -> None:
     item = SavedItem.new(
         user_id="telegram:123",

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlparse
 
 from kb_agent.core.models import (
     AIStatus,
@@ -13,6 +14,7 @@ from kb_agent.core.models import (
     LearningBrief,
     Priority,
     SavedItem,
+    SourceType,
     Status,
 )
 
@@ -111,6 +113,18 @@ def build_enrichment_prompt(context: dict[str, Any]) -> str:
         "Key takeaways may contain deeper detail for the details view.\n\n"
         f"Context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}"
     )
+
+
+def apply_source_fallback_tags(item: SavedItem, tags: Iterable[str]) -> list[str]:
+    selected = list(dict.fromkeys(tag.strip().lower() for tag in tags if tag.strip()))
+    if item.source_type is SourceType.INSTAGRAM:
+        defaults = ["instagram"]
+        if urlparse(item.url).path.lower().startswith("/reel/"):
+            defaults.append("reel")
+        for tag in defaults:
+            if tag not in selected:
+                selected.append(tag)
+    return selected
 
 
 def validate_learning_brief(
@@ -214,6 +228,7 @@ def sync_brief_to_item(
     now: datetime,
     extracted: ExtractedContent | None = None,
 ) -> SavedItem:
+    brief = replace(brief, tags=apply_source_fallback_tags(item, brief.tags))
     extracted_text = item.extracted_text
     source_metadata = dict(item.source_metadata)
     if extracted is not None:

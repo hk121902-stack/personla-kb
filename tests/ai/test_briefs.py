@@ -211,6 +211,40 @@ def test_sync_brief_to_item_sets_search_fields_and_ai_status() -> None:
     assert synced.status is Status.READY
 
 
+def test_sync_brief_to_item_adds_instagram_reel_fallback_tags() -> None:
+    item = SavedItem.new(
+        user_id="telegram:123",
+        url="https://www.instagram.com/reel/DXkCDvJoYa8/",
+        source_type=SourceType.INSTAGRAM,
+        now=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+    )
+    brief = LearningBrief(
+        brief_version=1,
+        provider="gemini",
+        model="gemini-2.5-flash-lite",
+        generated_at=datetime(2026, 5, 3, 10, 0, tzinfo=UTC),
+        title="Instagram Reel",
+        topic="ai",
+        tags=["ai"],
+        summary="Saved Instagram Reel.",
+        key_takeaways=["Review the Reel."],
+        why_it_matters="It was saved for later learning.",
+        estimated_time_minutes=5,
+        suggested_next_action="Review the source.",
+    )
+
+    synced = sync_brief_to_item(
+        item,
+        brief,
+        ready=True,
+        now=datetime(2026, 5, 3, 10, 0, tzinfo=UTC),
+    )
+
+    assert synced.learning_brief is not None
+    assert synced.learning_brief.tags == ["ai", "instagram", "reel"]
+    assert synced.tags == ["ai", "instagram", "reel"]
+
+
 def test_sync_brief_to_item_ready_false_keeps_ready_status_and_retry_error() -> None:
     item = replace(
         _item(),

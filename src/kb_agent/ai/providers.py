@@ -6,6 +6,7 @@ from collections import Counter
 from dataclasses import replace
 from datetime import UTC, datetime
 
+from kb_agent.ai.briefs import apply_source_fallback_tags
 from kb_agent.core.models import ExtractedContent, LearningBrief, SavedItem, Status
 
 _EMBEDDING_SIZE = 32
@@ -52,7 +53,7 @@ class HeuristicAIProvider:
 
         title = extracted.title.strip() or item.url
         text = extracted.text.strip()
-        tags = _generate_tags(title, text, item.user_note)
+        tags = apply_source_fallback_tags(item, _generate_tags(title, text, item.user_note))
         topic = " ".join(tags[:2]) if tags else item.source_type.value
         summary = _summarize(text) or title
         embedding = _embed(title, text, item.user_note)
@@ -79,7 +80,7 @@ class HeuristicAIProvider:
         if extracted is not None:
             title = extracted.title.strip() or item.url
             text = extracted.text.strip() or item.user_note
-        tags = _generate_tags(title, text, item.user_note)
+        tags = apply_source_fallback_tags(item, _generate_tags(title, text, item.user_note))
         summary = _summarize(text) or title
         return LearningBrief(
             brief_version=1,
