@@ -1,6 +1,6 @@
 [project]
 name = "personal-kb-agent"
-version = "0.0.3"
+version = "0.0.4"
 description = "Telegram-first personal knowledge base agent"
 requires-python = ">=3.12"
 dependencies = [

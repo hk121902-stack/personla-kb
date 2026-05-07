@@ -6,6 +6,34 @@
 
 - _(No entries yet.)_
 
+## v0.0.4 - 2026-05-08
+
+### Added
+
+- Instagram source detection for saved links, including Instagram posts and Reels.
+- Instagram OpenGraph extraction for public titles, captions, images, and video metadata.
+- Fallback Instagram content for blocked, private, empty, or unsafe fetches so links are still saved with useful context.
+- AI brief and heuristic tagging support for Instagram/Reels saves.
+
+### Fixed
+
+- Hardened Instagram extraction paths around blocked HTTP responses, private-IP DNS resolution, oversized pages, and malformed metadata.
+
+## v0.0.3 - 2026-05-05
+
+### Added
+
+- Link extraction now supports quick metadata capture for YouTube videos via oEmbed.
+- Link extraction now supports X posts via oEmbed metadata fallback.
+
+### Changed
+
+- Enrichment and extraction flow now checks platform-specific metadata providers before page fetch fallback.
+
+### Fixed
+
+- Added coverage for short-link/video and X post extraction parsing paths to improve consistency across blocked/redirect-heavy links.
+
 ## v0.0.2 - 2026-05-04
 
 ### Added
@@ -34,21 +62,6 @@
 ### Docs
 
 - Updated changelog and README for the `v0.0.2` release.
-
-## v0.0.3 - 2026-05-05
-
-### Added
-
-- Link extraction now supports quick metadata capture for YouTube videos via oEmbed.
-- Link extraction now supports X posts via oEmbed metadata fallback.
-
-### Changed
-
-- Enrichment and extraction flow now checks platform-specific metadata providers before page fetch fallback.
-
-### Fixed
-
-- Added coverage for short-link/video and X post extraction parsing paths to improve consistency across blocked/redirect-heavy links.
 
 ## v0.0.1 - 2026-05-03
 
