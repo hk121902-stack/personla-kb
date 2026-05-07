@@ -14,13 +14,20 @@ def test_detects_primary_source_types() -> None:
     assert detect_source_type("https://youtube.com/watch?v=abc") is SourceType.YOUTUBE
     assert detect_source_type("https://youtu.be/abc") is SourceType.YOUTUBE
     assert detect_source_type("https://linkedin.com/posts/demo") is SourceType.LINKEDIN
+    assert (
+        detect_source_type("https://www.instagram.com/reel/DXkCDvJoYa8/")
+        is SourceType.INSTAGRAM
+    )
+    assert detect_source_type("https://instagram.com/p/ABC123/") is SourceType.INSTAGRAM
     assert detect_source_type("https://example.com/article") is SourceType.WEB
 
 
 def test_detects_source_types_from_common_subdomains() -> None:
     assert detect_source_type("https://m.youtube.com/watch?v=abc") is SourceType.YOUTUBE
     assert detect_source_type("https://www.linkedin.com/posts/demo") is SourceType.LINKEDIN
+    assert detect_source_type("https://www.instagram.com/reel/DXkCDvJoYa8/") is SourceType.INSTAGRAM
 
 
 def test_detect_source_type_avoids_spoofed_domains() -> None:
     assert detect_source_type("https://youtube.com.example.com/watch?v=abc") is SourceType.WEB
+    assert detect_source_type("https://instagram.com.example.com/reel/abc") is SourceType.WEB

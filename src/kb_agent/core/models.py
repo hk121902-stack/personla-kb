@@ -42,6 +42,7 @@ class SourceType(StrEnum):
     X = "x"
     YOUTUBE = "youtube"
     LINKEDIN = "linkedin"
+    INSTAGRAM = "instagram"
     WEB = "web"
 
 

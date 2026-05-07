@@ -24,6 +24,8 @@ def detect_source_type(url: str) -> SourceType:
         return SourceType.YOUTUBE
     if _host_matches(hostname, "linkedin.com"):
         return SourceType.LINKEDIN
+    if _host_matches(hostname, "instagram.com"):
+        return SourceType.INSTAGRAM
     return SourceType.WEB
 
 
